@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "LAX Prompt Lens"
+  },
+  "extensionShortName": {
+    "message": "LAX Lens"
+  },
+  "extensionDescription": {
+    "message": "Analyze Danbooru references or written concepts and generate structured image prompts."
+  },
+  "actionTitle": {
+    "message": "Open LAX Prompt Lens"
+  }
+}

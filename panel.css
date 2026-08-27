@@ -124,13 +124,26 @@ h3 { margin-bottom: 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em
 
 .text-button, .copy-button, .icon-button { border: 0; cursor: pointer; color: var(--muted); background: transparent; font: 700 9px/1 "Cascadia Code", Consolas, monospace; letter-spacing: 0.04em; transition: color 150ms ease, background 150ms ease, transform 150ms ease; }
 .text-button:hover, .copy-button:hover, .icon-button:hover { color: var(--accent); }
-.url-field { display: block; margin: 18px 0 11px; }
+.source-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 18px; padding: 4px; border: 1px solid var(--line); background: #080b0e; }
+.source-mode-switch button { height: 34px; border: 1px solid transparent; color: var(--muted); background: transparent; cursor: pointer; font: 750 9px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .05em; }
+.source-mode-switch button[aria-pressed="true"] { border-color: rgba(223,255,0,.42); color: var(--accent); background: var(--accent-soft); }
+.source-mode-switch button:disabled { cursor: wait; opacity: .45; }
+.source-input-panel { margin: 11px 0; }
+.url-field, .manual-field { display: block; }
 input, select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 1px; outline: none; color: var(--text); background: #080b0e; transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease; }
 input:focus, select:focus, textarea:focus { border-color: rgba(223, 255, 0, 0.68); box-shadow: inset 3px 0 0 var(--accent), 0 0 0 2px rgba(223, 255, 0, 0.08); background: #0b0f12; }
 .url-field input { height: 52px; padding: 0 14px; font: 500 12px/1.2 "Cascadia Code", Consolas, monospace; }
+.manual-field textarea { min-height: 148px; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; font-size: 12px; line-height: 1.65; }
+.input-hint { display: block; margin-top: 6px; color: var(--dim); font: 650 8px/1.4 "Cascadia Code", Consolas, monospace; letter-spacing: .04em; }
+.manual-detail-mode { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; color: var(--dim); font: 700 8px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .06em; }
+.detail-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 2px; border: 1px solid var(--line); background: #080b0e; }
+.detail-mode-switch button { min-width: 42px; height: 24px; border: 1px solid transparent; color: var(--muted); background: transparent; cursor: pointer; font: 750 9px/1 "Cascadia Code", Consolas, monospace; }
+.detail-mode-switch button[aria-pressed="true"] { border-color: rgba(223,255,0,.42); color: var(--accent); background: var(--accent-soft); }
+.detail-mode-switch button:disabled { cursor: wait; opacity: .45; }
 input::placeholder, textarea::placeholder { color: #485158; }
 
 .primary-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.primary-actions.single-action { grid-template-columns: 1fr; }
 .primary-button, .secondary-button { position: relative; height: 46px; border-radius: 1px; cursor: pointer; font-weight: 850; letter-spacing: 0.04em; transition: transform 140ms ease, opacity 140ms ease, border-color 140ms ease, background 140ms ease; }
 .primary-button { overflow: hidden; border: 0; color: #090b0c; background: var(--accent); }
 .primary-button::after { content: ""; position: absolute; top: 0; right: 0; width: 42px; height: 100%; opacity: 0.2; background: repeating-linear-gradient(135deg, #000 0 4px, transparent 4px 8px); }
@@ -170,6 +183,7 @@ input::placeholder, textarea::placeholder { color: #485158; }
 .check-field input { width: 14px; height: 14px; accent-color: var(--accent); }
 .compact-check { align-self: end; height: 40px; }
 .privacy-note { margin: 0 0 16px; color: var(--dim); font-size: 9px; line-height: 1.55; }
+.endpoint-preview { display: block; margin-top: 7px; color: #8f9a9c; font: 650 8px/1.45 "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere; }
 
 .preview-card { display: grid; grid-template-columns: 42% 1fr; margin-top: 10px; overflow: hidden; }
 .preview-frame { position: relative; min-height: 168px; background: #030506; }
@@ -184,6 +198,7 @@ input::placeholder, textarea::placeholder { color: #485158; }
 .result-card { margin-top: 8px; padding: 14px; box-shadow: none; }
 .result-card-header { margin-bottom: 9px; }
 .result-index { min-width: 28px; height: 24px; }
+.position-label { margin: -2px 0 9px; color: var(--accent); font: 650 8px/1.4 "Cascadia Code", Consolas, monospace; letter-spacing: .06em; }
 .copy-button { padding: 7px 9px; }
 .copy-button:hover { background: var(--accent-soft); }
 textarea { display: block; min-height: 118px; padding: 12px 13px; resize: vertical; color: #d5dcda; font: 500 10px/1.7 "Cascadia Code", "SFMono-Regular", Consolas, monospace; }

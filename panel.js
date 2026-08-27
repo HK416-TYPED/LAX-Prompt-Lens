@@ -1,18 +1,25 @@
 import {
   buildCombinedPrompt,
+  buildManualPromptInstruction,
   buildPostApiUrls,
   buildResponsesRequest,
+  buildTextResponsesRequest,
   buildTagPrompt,
   buildVisionInstruction,
   chooseImageUrl,
   extractChatText,
   extractResponsesText,
+  formatManualPromptBundle,
+  isBuiltInApiEndpoint,
   normalizeVisualPrompt,
+  parseManualPromptResult,
   parsePostUrl,
   resolveApiEndpoint
 } from "./core.js";
+import { fetchImageAsDataUrl } from "./image-utils.js";
 
 const EXAMPLE_URL = "https://shima.donmai.us/posts/11647422?q=girls_frontline_2%3A_exilium";
+const EXAMPLE_MANUAL_TEXT = "银发少女独自站在雨夜的霓虹街道，黑色长风衣被风掀起，手持透明雨伞。低机位中近景，冷蓝环境光与暖粉色招牌形成对比，湿润路面映出破碎倒影，日系动画电影质感。";
 const DEFAULT_ENDPOINTS = {
   responses: "https://api.openai.com/v1/responses",
   chat: "https://api.openai.com/v1/chat/completions"
@@ -31,19 +38,34 @@ const PROVIDER_PRESETS = {
     model: "gpt-5.6-luna",
     reasoningEffort: "xhigh",
     disableStorage: true
+  },
+  xai: {
+    apiMode: "responses",
+    endpoint: "https://api.x.ai",
+    model: "grok-4.6",
+    reasoningEffort: "high",
+    disableStorage: true
   }
 };
 const SETTING_KEYS = [
   "providerPreset", "apiMode", "endpoint", "model", "reasoningEffort",
   "disableStorage", "outputLanguage", "imageQuality", "promptOrder",
-  "includeMeta", "saveKey", "apiKey"
+  "includeMeta", "saveKey", "apiKey", "sourceMode"
 ];
 
 const elements = {
   versionBadge: document.querySelector("#version-badge"),
   footerVersion: document.querySelector("#footer-version"),
   compactModeButton: document.querySelector("#compact-mode-button"),
+  inputModuleCode: document.querySelector("#input-module-code"),
+  sourceTitle: document.querySelector("#source-title"),
+  sourceModeButtons: [...document.querySelectorAll("[data-source-mode]")],
+  manualDetailButtons: [...document.querySelectorAll("[data-manual-detail-mode]")],
+  urlInputPanel: document.querySelector("#url-input-panel"),
+  manualInputPanel: document.querySelector("#manual-input-panel"),
   postUrl: document.querySelector("#post-url"),
+  manualText: document.querySelector("#manual-text"),
+  primaryActions: document.querySelector(".primary-actions"),
   analyzeButton: document.querySelector("#analyze-button"),
   tagsOnlyButton: document.querySelector("#tags-only-button"),
   exampleButton: document.querySelector("#example-button"),
@@ -55,6 +77,7 @@ const elements = {
   providerPreset: document.querySelector("#provider-preset"),
   apiMode: document.querySelector("#api-mode"),
   endpoint: document.querySelector("#endpoint"),
+  resolvedEndpoint: document.querySelector("#resolved-endpoint"),
   model: document.querySelector("#model"),
   reasoningEffort: document.querySelector("#reasoning-effort"),
   disableStorage: document.querySelector("#disable-storage"),
@@ -69,14 +92,24 @@ const elements = {
   previewImage: document.querySelector("#preview-image"),
   postMeta: document.querySelector("#post-meta"),
   results: document.querySelector("#results"),
+  legacyResults: document.querySelector("#legacy-results"),
+  manualResults: document.querySelector("#manual-results"),
   tagsOutput: document.querySelector("#tags-output"),
   visualOutput: document.querySelector("#visual-output"),
   combinedOutput: document.querySelector("#combined-output"),
+  baseOutput: document.querySelector("#base-output"),
+  characterResults: document.querySelector("#character-results"),
+  undesiredOutput: document.querySelector("#undesired-output"),
+  characterTemplate: document.querySelector("#character-result-template"),
   copyAll: document.querySelector("#copy-all")
 };
 
 let lastDefaultEndpoint = DEFAULT_ENDPOINTS.responses;
 let diagnosticRun = null;
+let sourceMode = "url";
+let manualDetailMode = "simple";
+let isBusy = false;
+let manualBundle = "";
 
 showVersion();
 await restoreSettings();
@@ -89,7 +122,10 @@ function showVersion() {
 }
 
 async function restoreSettings() {
-  const saved = await chrome.storage.local.get(SETTING_KEYS);
+  const [saved, session] = await Promise.all([
+    chrome.storage.local.get(SETTING_KEYS),
+    chrome.storage.session.get(["sourcePostUrl", "sourceManualText", "manualDetailMode", "lastPromptResult"])
+  ]);
   const legacyCustomEndpoint = saved.endpoint && !Object.values(DEFAULT_ENDPOINTS).includes(saved.endpoint);
   const providerPreset = saved.providerPreset || (legacyCustomEndpoint ? "custom" : "jarless");
   const preset = PROVIDER_PRESETS[providerPreset] || PROVIDER_PRESETS.jarless;
@@ -105,16 +141,38 @@ async function restoreSettings() {
   elements.includeMeta.checked = Boolean(saved.includeMeta);
   elements.saveKey.checked = Boolean(saved.saveKey);
   elements.apiKey.value = saved.saveKey ? (saved.apiKey || "") : "";
+  elements.postUrl.value = session.sourcePostUrl || "";
+  elements.manualText.value = session.sourceManualText || "";
+  manualDetailMode = session.manualDetailMode === "detailed" ? "detailed" : "simple";
+  sourceMode = saved.sourceMode === "manual" ? "manual" : "url";
+  applySourceMode(sourceMode);
+  applyManualDetailMode();
   lastDefaultEndpoint = DEFAULT_ENDPOINTS[elements.apiMode.value];
+  updateEndpointPreview();
+  restoreLastResult(session.lastPromptResult);
 }
 
 function bindEvents() {
   elements.compactModeButton.addEventListener("click", switchToCompactMode);
 
+  for (const button of elements.sourceModeButtons) {
+    button.addEventListener("click", () => switchSourceMode(button.dataset.sourceMode));
+  }
+  for (const button of elements.manualDetailButtons) {
+    button.addEventListener("click", () => switchManualDetailMode(button.dataset.manualDetailMode));
+  }
+
   elements.exampleButton.addEventListener("click", () => {
-    elements.postUrl.value = EXAMPLE_URL;
-    elements.postUrl.focus();
-    setStatus("idle", "示例链接已填入");
+    if (sourceMode === "manual") {
+      elements.manualText.value = EXAMPLE_MANUAL_TEXT;
+      elements.manualText.focus();
+      setStatus("idle", "示例画面描述已填入");
+    } else {
+      elements.postUrl.value = EXAMPLE_URL;
+      elements.postUrl.focus();
+      setStatus("idle", "示例链接已填入");
+    }
+    void persistSourceInputs();
   });
 
   elements.analyzeButton.addEventListener("click", () => runPipeline({ tagsOnly: false }));
@@ -122,9 +180,18 @@ function bindEvents() {
   elements.postUrl.addEventListener("keydown", (event) => {
     if (event.key === "Enter") runPipeline({ tagsOnly: false });
   });
+  elements.manualText.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      runPipeline({ tagsOnly: false });
+    }
+  });
+  elements.postUrl.addEventListener("change", persistSourceInputs);
+  elements.manualText.addEventListener("change", persistSourceInputs);
 
   elements.providerPreset.addEventListener("change", () => {
     applyProviderPreset(elements.providerPreset.value);
+    updateEndpointPreview();
     persistSettings();
   });
 
@@ -134,8 +201,11 @@ function bindEvents() {
       elements.endpoint.value = DEFAULT_ENDPOINTS[elements.apiMode.value];
     }
     lastDefaultEndpoint = DEFAULT_ENDPOINTS[elements.apiMode.value];
+    updateEndpointPreview();
     persistSettings();
   });
+
+  elements.endpoint.addEventListener("input", updateEndpointPreview);
 
   elements.toggleKey.addEventListener("click", () => {
     const showing = elements.apiKey.type === "text";
@@ -154,13 +224,18 @@ function bindEvents() {
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
     button.addEventListener("click", () => copyTarget(button));
   });
-  elements.copyAll.addEventListener("click", () => copyText(elements.combinedOutput.value, elements.copyAll));
+  elements.copyAll.addEventListener("click", () => {
+    const value = elements.manualResults.classList.contains("is-hidden")
+      ? elements.combinedOutput.value
+      : manualBundle;
+    copyText(value, elements.copyAll);
+  });
   elements.copyDiagnostics.addEventListener("click", () => copyText(elements.diagnosticsOutput.value, elements.copyDiagnostics));
 }
 
 async function switchToCompactMode() {
   const apiKey = elements.apiKey.value.trim();
-  await persistSettings();
+  await Promise.all([persistSettings(), persistSourceInputs()]);
   if (apiKey) await chrome.storage.session.set({ apiKey });
 
   const response = await chrome.runtime.sendMessage({ type: "set-ui-mode", mode: "compact" });
@@ -198,12 +273,64 @@ async function persistSettings() {
     imageQuality: elements.imageQuality.value,
     promptOrder: elements.promptOrder.value,
     includeMeta: elements.includeMeta.checked,
-    saveKey: elements.saveKey.checked
+    saveKey: elements.saveKey.checked,
+    sourceMode
   };
 
   if (elements.saveKey.checked) settings.apiKey = elements.apiKey.value.trim();
   await chrome.storage.local.set(settings);
   if (!elements.saveKey.checked) await chrome.storage.local.remove("apiKey");
+}
+
+async function persistSourceInputs() {
+  await chrome.storage.session.set({
+    sourcePostUrl: elements.postUrl.value.trim(),
+    sourceManualText: elements.manualText.value,
+    manualDetailMode
+  });
+}
+
+async function switchManualDetailMode(mode) {
+  if (isBusy) return;
+  manualDetailMode = mode === "detailed" ? "detailed" : "simple";
+  applyManualDetailMode();
+  await chrome.storage.session.set({ manualDetailMode });
+}
+
+function applyManualDetailMode() {
+  for (const button of elements.manualDetailButtons) {
+    button.setAttribute("aria-pressed", String(button.dataset.manualDetailMode === manualDetailMode));
+  }
+}
+
+async function switchSourceMode(mode) {
+  if (isBusy) return;
+  sourceMode = mode === "manual" ? "manual" : "url";
+  applySourceMode(sourceMode);
+  elements.results.classList.add("is-hidden");
+  elements.previewCard.classList.add("is-hidden");
+  hideDiagnostics();
+  await Promise.all([
+    chrome.storage.local.set({ sourceMode }),
+    persistSourceInputs()
+  ]);
+}
+
+function applySourceMode(mode) {
+  const manual = mode === "manual";
+  for (const button of elements.sourceModeButtons) {
+    button.setAttribute("aria-pressed", String(button.dataset.sourceMode === mode));
+  }
+  elements.urlInputPanel.classList.toggle("is-hidden", manual);
+  elements.manualInputPanel.classList.toggle("is-hidden", !manual);
+  elements.tagsOnlyButton.classList.toggle("is-hidden", manual);
+  elements.primaryActions.classList.toggle("single-action", manual);
+  elements.inputModuleCode.textContent = manual ? "INPUT / TEXT" : "INPUT / URL";
+  elements.sourceTitle.textContent = manual ? "输入画面描述" : "粘贴帖子链接";
+  elements.analyzeButton.innerHTML = manual
+    ? '<span class="button-icon" aria-hidden="true">✦</span>生成提示词'
+    : '<span class="button-icon" aria-hidden="true">✦</span>提取并分析';
+  setStatus("idle", manual ? "等待输入画面描述" : "等待输入链接");
 }
 
 function applyProviderPreset(provider) {
@@ -217,12 +344,29 @@ function applyProviderPreset(provider) {
   lastDefaultEndpoint = DEFAULT_ENDPOINTS[preset.apiMode];
 }
 
+function updateEndpointPreview() {
+  const names = { openai: "OpenAI", xai: "xAI Grok", jarless: "JarlessAPI", custom: "自定义服务" };
+  try {
+    const endpoint = resolveApiEndpoint(
+      elements.endpoint.value,
+      elements.apiMode.value,
+      elements.providerPreset.value
+    );
+    elements.resolvedEndpoint.textContent = `实际请求：${names[elements.providerPreset.value]} · ${endpoint}`;
+  } catch {
+    elements.resolvedEndpoint.textContent = "实际请求：等待有效接口地址";
+  }
+}
+
 async function runPipeline({ tagsOnly }) {
+  if (isBusy) return;
   diagnosticRun = {
     version: chrome.runtime.getManifest().version,
     startedAt: new Date().toISOString(),
     userAgent: navigator.userAgent,
-    postUrl: elements.postUrl.value.trim(),
+    sourceMode,
+    postUrl: sourceMode === "url" ? elements.postUrl.value.trim() : undefined,
+    manualTextLength: sourceMode === "manual" ? elements.manualText.value.trim().length : undefined,
     events: []
   };
   hideDiagnostics();
@@ -233,6 +377,11 @@ async function runPipeline({ tagsOnly }) {
   elements.combinedOutput.value = "";
 
   try {
+    if (sourceMode === "manual") {
+      await runManualTextPipeline();
+      return;
+    }
+
     const parsed = parsePostUrl(elements.postUrl.value);
     let endpoint = "";
     if (!tagsOnly) {
@@ -251,8 +400,10 @@ async function runPipeline({ tagsOnly }) {
 
     elements.tagsOutput.value = tagPrompt;
     elements.combinedOutput.value = tagPrompt;
+    showLegacyResults();
     elements.results.classList.remove("is-hidden");
     renderPreview(post);
+    await saveLegacyResult();
 
     if (tagsOnly) {
       setStatus("success", `已提取 ${tagPrompt.split(", ").length} 个标签`);
@@ -266,7 +417,7 @@ async function runPipeline({ tagsOnly }) {
     setStatus("busy", "正在读取主图并进行专业画面分析…");
     const imageUrl = chooseImageUrl(post, elements.imageQuality.value);
     if (!imageUrl) throw new Error("这个帖子没有可读取的主图 URL。 ");
-    const imageDataUrl = await fetchImageAsDataUrl(imageUrl, post.preview_file_url);
+    const imageDataUrl = await fetchImageAsDataUrl(imageUrl, post.preview_file_url, { endpoint });
     const visualPrompt = await callVisionApi({ endpoint, apiKey, imageDataUrl });
 
     elements.visualOutput.value = visualPrompt;
@@ -277,19 +428,44 @@ async function runPipeline({ tagsOnly }) {
     );
     autoSizeOutputs();
     setStatus("success", "三种 Prompt 已全部生成");
-    await persistSettings();
+    await Promise.all([persistSettings(), saveLegacyResult()]);
   } catch (error) {
     recordDiagnostic("pipeline-error", { name: error?.name, message: cleanError(error), stack: error?.stack });
-    setStatus("error", "处理失败，请展开“诊断详情”并复制报告");
+    setStatus("error", `处理失败：${cleanError(error)}`);
     showDiagnostics();
   } finally {
     setBusy(false);
   }
 }
 
+async function runManualTextPipeline() {
+  const userText = elements.manualText.value.trim();
+  if (!userText) throw new Error("请输入要转换的画面描述。 ");
+
+  const apiKey = elements.apiKey.value.trim();
+  if (!apiKey) throw new Error("手动文本生成需要 API Key，请先在设置中填写。 ");
+  if (!elements.model.value.trim()) throw new Error("请填写模型名称。 ");
+
+  const endpoint = resolveApiEndpoint(
+    elements.endpoint.value,
+    elements.apiMode.value,
+    elements.providerPreset.value
+  );
+  await ensureEndpointPermission(endpoint);
+  setStatus("busy", "正在将画面描述重构为专业提示词…");
+  const result = await callManualPromptApi({ endpoint, apiKey, userText, detailMode: manualDetailMode });
+  renderManualResult(result);
+  await Promise.all([
+    persistSettings(),
+    persistSourceInputs(),
+    chrome.storage.session.set({ lastPromptResult: { mode: "manual", result } })
+  ]);
+  setStatus("success", "NovelAI V5 分区提示词已生成");
+}
+
 async function ensureEndpointPermission(endpoint) {
   const url = new URL(endpoint);
-  if (["https://api.openai.com", "https://jarlessapi.com"].includes(url.origin)) return;
+  if (isBuiltInApiEndpoint(endpoint)) return;
   const originPattern = `${url.origin}/*`;
   const hasPermission = await chrome.permissions.contains({ origins: [originPattern] });
   if (hasPermission) return;
@@ -464,31 +640,72 @@ function renderPreview(post) {
   elements.previewCard.classList.remove("is-hidden");
 }
 
-async function fetchImageAsDataUrl(primaryUrl, fallbackUrl) {
-  try {
-    return await downloadAsDataUrl(primaryUrl);
-  } catch (error) {
-    if (!fallbackUrl || fallbackUrl === primaryUrl) throw error;
-    return downloadAsDataUrl(fallbackUrl);
+function showLegacyResults() {
+  elements.legacyResults.classList.remove("is-hidden");
+  elements.manualResults.classList.add("is-hidden");
+}
+
+function renderManualResult(result) {
+  manualBundle = formatManualPromptBundle(result);
+  elements.baseOutput.value = result.basePrompt.prompt;
+  elements.undesiredOutput.value = result.undesiredContent;
+  elements.characterResults.replaceChildren();
+
+  for (const [index, item] of result.characterPrompts.entries()) {
+    const card = elements.characterTemplate.content.firstElementChild.cloneNode(true);
+    card.querySelector(".result-index").textContent = `C${index + 1}`;
+    card.querySelector("h3").textContent = item.name;
+    card.querySelector(".position-label").textContent = `POSITION / ${item.position}`;
+    card.querySelector("textarea").value = item.prompt;
+    card.querySelector("button").addEventListener("click", (event) => copyText(item.prompt, event.currentTarget));
+    elements.characterResults.append(card);
   }
+
+  elements.legacyResults.classList.add("is-hidden");
+  elements.manualResults.classList.remove("is-hidden");
+  elements.results.classList.remove("is-hidden");
+  autoSizeOutputs();
 }
 
-async function downloadAsDataUrl(url) {
-  const response = await fetch(url, { credentials: "omit" });
-  if (!response.ok) throw new Error(`主图下载失败（HTTP ${response.status}）。`);
-  const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("主图不是视觉模型支持的静态图像。 ");
-  if (blob.size > 20 * 1024 * 1024) throw new Error("主图超过 20 MB，请改用 Sample 图像质量。 ");
-  return blobToDataUrl(blob);
-}
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("无法读取主图数据。 "));
-    reader.readAsDataURL(blob);
+async function saveLegacyResult() {
+  const preview = elements.previewCard.classList.contains("is-hidden") ? null : {
+    src: elements.previewImage.src,
+    meta: elements.postMeta.textContent
+  };
+  await chrome.storage.session.set({
+    lastPromptResult: {
+      mode: "url",
+      tagsPrompt: elements.tagsOutput.value,
+      visualPrompt: elements.visualOutput.value,
+      combinedPrompt: elements.combinedOutput.value,
+      preview
+    }
   });
+}
+
+function restoreLastResult(state) {
+  if (!state || !["url", "manual"].includes(state.mode)) return;
+  sourceMode = state.mode;
+  applySourceMode(sourceMode);
+
+  if (state.mode === "manual" && state.result?.basePrompt?.prompt) {
+    renderManualResult(state.result);
+  } else if (state.mode === "url" && state.combinedPrompt) {
+    elements.tagsOutput.value = state.tagsPrompt || "";
+    elements.visualOutput.value = state.visualPrompt || "";
+    elements.combinedOutput.value = state.combinedPrompt;
+    showLegacyResults();
+    elements.results.classList.remove("is-hidden");
+    if (state.preview?.src) {
+      elements.previewImage.src = state.preview.src;
+      elements.postMeta.textContent = state.preview.meta || "—";
+      elements.previewCard.classList.remove("is-hidden");
+    }
+    autoSizeOutputs();
+  } else {
+    return;
+  }
+  setStatus("success", "已恢复上次生成结果");
 }
 
 async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {
@@ -537,9 +754,49 @@ async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {
   return text;
 }
 
+async function callManualPromptApi({ endpoint, apiKey, userText, detailMode }) {
+  const instruction = buildManualPromptInstruction(detailMode);
+  const mode = elements.apiMode.value;
+  const body = mode === "responses"
+    ? buildTextResponsesRequest({
+        model: elements.model.value.trim(),
+        instruction,
+        userText,
+        reasoningEffort: elements.reasoningEffort.value,
+        disableStorage: elements.disableStorage.checked
+      })
+    : {
+        model: elements.model.value.trim(),
+        max_tokens: 1800,
+        messages: [
+          { role: "system", content: instruction },
+          { role: "user", content: userText }
+        ]
+      };
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error?.message || data?.message || `AI API 请求失败（HTTP ${response.status}）。`);
+  }
+
+  const rawText = mode === "responses" ? extractResponsesText(data) : extractChatText(data);
+  return parseManualPromptResult(rawText);
+}
+
 function setBusy(busy) {
+  isBusy = busy;
   elements.analyzeButton.disabled = busy;
   elements.tagsOnlyButton.disabled = busy;
+  for (const button of elements.sourceModeButtons) button.disabled = busy;
+  for (const button of elements.manualDetailButtons) button.disabled = busy;
   elements.analyzeButton.firstElementChild.textContent = busy ? "◌" : "✦";
 }
 
@@ -575,7 +832,8 @@ function cleanError(error) {
 }
 
 function autoSizeOutputs() {
-  for (const textarea of [elements.tagsOutput, elements.visualOutput, elements.combinedOutput]) {
+  for (const textarea of elements.results.querySelectorAll("textarea")) {
+    if (textarea.closest(".is-hidden")) continue;
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 112), 420)}px`;
   }

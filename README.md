@@ -24,6 +24,8 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 4. produce a polished 300–550 word English art-direction prompt covering composition, camera, depth, drawing method, edge control, color, lighting, materials, and editorial character;
 5. return the Tags Prompt, Visual NL Prompt, and Combined Prompt separately.
 
+It also provides a **Manual text** mode. Enter an image concept in Chinese or English and choose **Simple** (default) or **Detailed** generation. The configured AI API returns a NovelAI V5 base prompt, positioned character prompts, and undesired content without requiring a Danbooru post.
+
 ![Three-step quick start](docs/assets/quick-start.png)
 
 ### Interface preview
@@ -45,7 +47,8 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 - **Professional visual language** — prioritizes the face, silhouette, composition, depth, rendering method, color hierarchy, and lighting logic instead of listing every visible object.
 - **Descriptive output** — normalizes accidental imperative openings such as `Create ...` into a coherent `A ...` / `An ...` image prompt.
 - **Two interface modes** — a full Chrome Side Panel and a compact toolbar popup.
-- **Provider flexibility** — supports the official OpenAI Responses API, a JarlessAPI Responses preset, and an optional compatible custom endpoint.
+- **Manual text generation** — produces NovelAI V5 base and character prompts with cross-field semantic deduplication.
+- **Provider flexibility** — supports the official OpenAI Responses API, the official xAI Grok Responses API, a JarlessAPI Responses preset, and an optional compatible custom endpoint.
 - **Local-first key handling** — the API key is session-only by default and is saved locally only when the user explicitly enables it.
 - **Stateless requests** — Responses requests use `store: false`.
 
@@ -66,17 +69,20 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 4. Click **Extract & Analyze**.
 5. Copy the Tags Prompt, Visual NL Prompt, or Combined Prompt.
 
+For manual generation, switch the input selector to **Manual text**, choose **Simple** or **Detailed**, enter an image concept, configure an API key, and click **Generate prompts**. The result is split into Base Prompt, positioned Character Prompts, and Undesired Content. Manual mode requires the AI API but does not read or upload a Danbooru image.
+
 ### Compact mode
 
-Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps only the URL field, generate action, combined-copy button, and a link back to the full panel. Current settings and session results are shared between both modes.
+Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps the URL/manual-text selector, generate action, result-copy button, and a link back to the full panel. Current inputs and generated results are restored when switching modes or reopening the panel during the same browser session.
 
 ### API support and current default
 
 Supported providers are presented in this order:
 
 1. **Official OpenAI Responses API**
-2. **JarlessAPI Responses** — the currently shipped default preset
-3. **Compatible custom endpoints**
+2. **Official xAI Grok Responses API** — `grok-4.6` with image understanding
+3. **JarlessAPI Responses** — the currently shipped default preset
+4. **Compatible custom endpoints**
 
 The extension currently opens with the following JarlessAPI preset:
 
@@ -105,6 +111,7 @@ Underscores become spaces, and parentheses are escaped as `\(` and `\)`. Meta ta
 
 - The extension reads only the public Danbooru post selected by the user.
 - The selected post image and analysis instruction are sent to the API endpoint configured by the user.
+- In Manual text mode, the entered concept is sent to the configured API endpoint instead of a post image.
 - API keys are sent only to that configured endpoint.
 - Keys are not persisted unless **Save key locally** is enabled.
 - The extension does not vote, favorite, edit, or upload Danbooru content.
@@ -129,7 +136,7 @@ Current test coverage includes URL parsing, API fallbacks, category ordering, ta
 
 ### Disclaimer
 
-LAX Prompt Lens is an independent tool and is not affiliated with Danbooru, OpenAI, or JarlessAPI. Respect source-site terms, artist rights, and the policies of your selected model provider.
+LAX Prompt Lens is an independent tool and is not affiliated with Danbooru, OpenAI, xAI, or JarlessAPI. Respect source-site terms, artist rights, and the policies of your selected model provider.
 
 ---
 
@@ -144,6 +151,8 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 3. 把帖子主图发送到使用者选择的视觉 API；
 4. 生成约 300–550 词的英文专业美术指导 Prompt，重点分析构图、镜头、空间层次、绘制方法、边缘控制、色彩、光照、材质与编辑美学；
 5. 分别输出 Tags Prompt、Visual NL Prompt 和 Combined Prompt。
+
+它也提供**手动文本**模式：输入中文或英文画面构想后，可选择默认的**简**模式或更细致的**繁**模式，通过已配置的 AI API 生成 NovelAI V5 主提示词、定位角色分区提示词和负面提示词，无需 Danbooru 帖子。
 
 ![三步快速上手](docs/assets/quick-start-zh.png)
 
@@ -166,7 +175,8 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 - **专业画面分析**：优先关注面部、轮廓、构图、空间、绘制技法、色彩层级和光照逻辑，不机械枚举全部物体。
 - **描述式输出**：自动把模型偶发返回的 `Create ...` 命令式开头整理为连贯的 `A ...` / `An ...` 图像提示词。
 - **两种界面模式**：提供完整 Chrome 侧边栏和紧凑工具栏小窗。
-- **多服务支持**：支持 OpenAI 官方 Responses API、JarlessAPI Responses 预设，并可选兼容自定义接口。
+- **手动文本生成**：生成 NovelAI V5 主提示词与角色分区，并执行跨字段语义去重。
+- **多服务支持**：支持 OpenAI 官方 Responses API、xAI Grok 官方 Responses API、JarlessAPI Responses 预设，并可选兼容自定义接口。
 - **本地优先的 Key 管理**：API Key 默认只在当前会话使用；仅在使用者主动勾选后保存到本机。
 - **无状态请求**：Responses 请求设置 `store: false`。
 
@@ -187,17 +197,20 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 4. 点击**提取并分析**。
 5. 复制 Tags Prompt、Visual NL Prompt 或 Combined Prompt。
 
+如需手动生成，将输入模式切换为**手动文本**，选择**简**或**繁**，输入画面构想，配置 API Key 后点击**生成提示词**。结果分为 Base Prompt、带位置的 Character Prompts 和 Undesired Content。手动模式需要调用 AI API，但不会读取或上传 Danbooru 图片。
+
 ### 小窗模式
 
-在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗只保留帖子 URL、生成按钮、组合结果复制按钮和返回完整版入口；设置与本次会话结果会在两个模式之间共享。
+在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗保留帖子 URL/手动文本切换、生成按钮、结果复制按钮和返回完整版入口；同一浏览器会话中切换模式或重新打开侧边栏会恢复输入与生成结果。
 
 ### API 支持与当前默认预设
 
 README 按以下顺序介绍支持的服务：
 
 1. **OpenAI 官方 Responses API**
-2. **JarlessAPI Responses**：当前随扩展提供的默认预设
-3. **兼容的自定义接口**
+2. **xAI Grok 官方 Responses API**：支持 `grok-4.6` 图像理解
+3. **JarlessAPI Responses**：当前随扩展提供的默认预设
+4. **兼容的自定义接口**
 
 扩展当前默认打开以下 JarlessAPI 预设：
 
@@ -226,6 +239,7 @@ artist → copyright → character → general
 
 - 扩展只读取使用者主动选择的公开 Danbooru 帖子。
 - 帖子图片与分析指令会发送到使用者配置的 API Endpoint。
+- 手动文本模式会把输入的画面构想发送到使用者配置的 API Endpoint，而不会发送帖子图片。
 - API Key 只会发送到该 Endpoint。
 - 除非主动开启**在本机保存 Key**，否则 Key 不会持久化。
 - 扩展不会修改、收藏、评分或上传 Danbooru 内容。
@@ -250,4 +264,4 @@ node --test
 
 ### 声明
 
-LAX Prompt Lens 是独立工具，与 Danbooru、OpenAI 或 JarlessAPI 均无隶属或合作关系。请遵守来源网站条款、创作者权益及所选模型服务商的政策。
+LAX Prompt Lens 是独立工具，与 Danbooru、OpenAI、xAI 或 JarlessAPI 均无隶属或合作关系。请遵守来源网站条款、创作者权益及所选模型服务商的政策。

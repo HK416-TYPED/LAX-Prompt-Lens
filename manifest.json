@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "LAX Prompt Lens",
-  "short_name": "LAX Lens",
-  "version": "0.5.0",
-  "description": "LAX 制作：从 Danbooru 帖子提取标签，并生成专业的画面分析提示词。",
+  "name": "__MSG_extensionName__",
+  "short_name": "__MSG_extensionShortName__",
+  "version": "0.7.0",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
   "minimum_chrome_version": "114",
   "permissions": [
     "storage",
@@ -15,6 +16,7 @@
     "https://*.donmai.us/*",
     "https://cdn.donmai.us/*",
     "https://api.openai.com/*",
+    "https://api.x.ai/*",
     "https://jarlessapi.com/*"
   ],
   "optional_host_permissions": [
@@ -26,8 +28,19 @@
     "service_worker": "service-worker.js",
     "type": "module"
   },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
-    "default_title": "打开 LAX Prompt Lens"
+    "default_title": "__MSG_actionTitle__",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
   },
   "side_panel": {
     "default_path": "panel.html"
