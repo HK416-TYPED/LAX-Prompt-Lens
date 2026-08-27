@@ -26,6 +26,19 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 
 ![Three-step quick start](docs/assets/quick-start.png)
 
+### Interface preview
+
+<table>
+  <tr>
+    <th>Full Side Panel</th>
+    <th>Compact Toolbar Popup</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/assets/full-panel.png" alt="LAX Prompt Lens full side panel" width="360"></td>
+    <td align="center" valign="top"><img src="docs/assets/compact-popup.png" alt="LAX Prompt Lens compact popup" width="380"></td>
+  </tr>
+</table>
+
 ### Highlights
 
 - **Stable tag extraction** — reads Danbooru's public post JSON instead of scraping sidebar HTML.
