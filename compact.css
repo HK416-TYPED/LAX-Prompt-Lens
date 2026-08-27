@@ -1,0 +1,60 @@
+:root {
+  color-scheme: dark;
+  --bg: #070a0d;
+  --surface: #10151a;
+  --line: rgba(231, 240, 238, 0.16);
+  --text: #edf2ef;
+  --muted: #879399;
+  --accent: #dfff00;
+  --cyan: #3ed9ff;
+  --danger: #ff6268;
+  --success: #76efbb;
+  font-family: "Arial Narrow", Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { width: 380px; min-height: 292px; margin: 0; }
+body {
+  color: var(--text);
+  background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+    radial-gradient(circle at 90% 0, rgba(62,217,255,.12), transparent 180px),
+    var(--bg);
+  background-size: 42px 42px, 42px 42px, auto, auto;
+}
+button, input { font: inherit; }
+.compact-shell { padding: 14px; }
+header { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.mini-mark { display: grid; grid-template-columns: repeat(3, 1fr); width: 42px; height: 42px; padding: 5px 3px; color: #070a0d; background: var(--accent); clip-path: polygon(0 0, 78% 0, 100% 22%, 100% 100%, 22% 100%, 0 78%); font: 900 11px/32px "Cascadia Code", Consolas, monospace; }
+.mini-mark span:nth-child(2) { transform: translateY(-3px); }
+.mini-mark span:nth-child(3) { transform: translateY(3px); }
+.brand-copy p { margin: 0 0 3px; color: var(--accent); font: 750 7px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .12em; }
+h1 { margin: 0; font-size: 18px; line-height: 1; letter-spacing: -.035em; }
+.mode-button { padding: 7px 8px; border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,.025); cursor: pointer; font-size: 9px; }
+.mode-button:hover { color: var(--accent); border-color: rgba(223,255,0,.5); }
+
+.compact-card { position: relative; margin-top: 12px; padding: 14px; border: 1px solid var(--line); background: rgba(16,21,26,.94); }
+.compact-card::after { content: ""; position: absolute; top: -1px; right: -1px; width: 16px; height: 16px; border-top: 3px solid var(--accent); border-right: 3px solid var(--accent); }
+.field-label { display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--muted); font: 700 8px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .08em; }
+.field-label span:first-child { color: var(--accent); }
+input { width: 100%; height: 42px; padding: 0 11px; border: 1px solid var(--line); border-radius: 0; outline: none; color: var(--text); background: #080b0e; font: 500 10px/1 "Cascadia Code", Consolas, monospace; }
+input:focus { border-color: rgba(223,255,0,.7); box-shadow: inset 3px 0 var(--accent); }
+input::placeholder { color: #4f5a60; }
+.generate-button, .copy-button { width: 100%; height: 40px; margin-top: 8px; border-radius: 0; cursor: pointer; font-size: 11px; font-weight: 850; letter-spacing: .04em; }
+.generate-button { border: 0; color: #070a0d; background: var(--accent); }
+.copy-button { border: 1px solid rgba(223,255,0,.38); color: var(--accent); background: rgba(223,255,0,.07); }
+.generate-button:hover, .copy-button:not(:disabled):hover { filter: brightness(1.08); }
+.generate-button:disabled, .copy-button:disabled { cursor: not-allowed; opacity: .38; }
+.status { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.status i { width: 6px; height: 6px; background: #657077; transform: rotate(45deg); }
+.status[data-state="busy"] i { background: var(--accent); animation: pulse 1s infinite; }
+.status[data-state="success"] { color: var(--success); }
+.status[data-state="success"] i { background: var(--success); }
+.status[data-state="error"] { color: var(--danger); }
+.status[data-state="error"] i { background: var(--danger); }
+.result-meta { margin: 7px 0 0; color: #667278; font: 650 8px/1.5 "Cascadia Code", Consolas, monospace; }
+.is-hidden { display: none; }
+footer { display: flex; justify-content: space-between; margin-top: 10px; color: #536067; font: 700 7px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .08em; }
+footer b { color: var(--cyan); }
+@keyframes pulse { 50% { opacity: .35; transform: rotate(45deg) scale(.7); } }

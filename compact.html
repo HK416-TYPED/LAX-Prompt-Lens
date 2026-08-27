@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAX Prompt Lens · 小窗</title>
+    <link rel="stylesheet" href="compact.css">
+  </head>
+  <body>
+    <main class="compact-shell">
+      <header>
+        <div class="mini-mark" aria-hidden="true"><span>L</span><span>A</span><span>X</span></div>
+        <div class="brand-copy">
+          <p>LAX / QUICK TERMINAL</p>
+          <h1>PROMPT LENS</h1>
+        </div>
+        <button id="full-mode-button" class="mode-button" type="button">完整版 ↗</button>
+      </header>
+
+      <section class="compact-card">
+        <div class="field-label"><span>01 / POST URL</span><span id="version">v—</span></div>
+        <input id="post-url" type="url" spellcheck="false" autocomplete="off" placeholder="粘贴 Danbooru 帖子链接…">
+
+        <button id="generate-button" class="generate-button" type="button">
+          <span aria-hidden="true">✦</span> 生成 TAG + NL
+        </button>
+
+        <button id="copy-button" class="copy-button" type="button" disabled>
+          复制生成的 TAG + NL
+        </button>
+
+        <div id="status" class="status" data-state="idle" aria-live="polite">
+          <i></i><span id="status-text">等待粘贴链接</span>
+        </div>
+        <p id="result-meta" class="result-meta is-hidden">—</p>
+      </section>
+
+      <footer><span>USES SAVED FULL-MODE SETTINGS</span><b>ONLINE</b></footer>
+    </main>
+    <script type="module" src="compact.js"></script>
+  </body>
+</html>

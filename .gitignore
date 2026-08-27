@@ -1,0 +1,19 @@
+# Local credentials and signing artifacts
+*.pem
+*.key
+*.p12
+*.crx
+.env
+.env.*
+
+# Build and test output
+dist/
+coverage/
+node_modules/
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
