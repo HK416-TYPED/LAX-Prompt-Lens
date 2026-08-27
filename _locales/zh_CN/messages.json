@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "LAX Prompt Lens"
+  },
+  "extensionShortName": {
+    "message": "LAX Lens"
+  },
+  "extensionDescription": {
+    "message": "提取 Danbooru 标签，并根据参考图生成专业的插画 Art Direction 提示词。"
+  },
+  "actionTitle": {
+    "message": "打开 LAX Prompt Lens"
+  }
+}

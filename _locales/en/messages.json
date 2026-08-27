@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "LAX Prompt Lens"
+  },
+  "extensionShortName": {
+    "message": "LAX Lens"
+  },
+  "extensionDescription": {
+    "message": "Extract Danbooru tags and generate professional illustration art-direction prompts from reference images."
+  },
+  "actionTitle": {
+    "message": "Open LAX Prompt Lens"
+  }
+}

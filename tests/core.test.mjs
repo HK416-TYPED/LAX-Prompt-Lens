@@ -10,10 +10,13 @@ import {
   extractChatText,
   extractResponsesText,
   formatTag,
+  isBuiltInApiEndpoint,
+  isXaiEndpoint,
   normalizeVisualPrompt,
   parsePostUrl,
   resolveApiEndpoint
 } from "../core.js";
+import { isXaiCompatibleImageType } from "../image-utils.js";
 
 const examplePost = {
   tag_string_artist: "scotch_quazar",
@@ -89,7 +92,7 @@ test("extracts text from Responses and Chat payloads", () => {
   assert.equal(extractChatText({ choices: [{ message: { content: "chat" } }] }), "chat");
 });
 
-test("resolves JarlessAPI and OpenAI-compatible base URLs", () => {
+test("resolves built-in and OpenAI-compatible base URLs", () => {
   assert.equal(
     resolveApiEndpoint("https://jarlessapi.com", "responses", "jarless"),
     "https://jarlessapi.com/v1/responses"
@@ -99,9 +102,23 @@ test("resolves JarlessAPI and OpenAI-compatible base URLs", () => {
     "https://api.openai.com/v1/responses"
   );
   assert.equal(
+    resolveApiEndpoint("https://api.x.ai", "responses", "xai"),
+    "https://api.x.ai/v1/responses"
+  );
+  assert.equal(
     resolveApiEndpoint("https://example.com/v1/responses", "responses", "custom"),
     "https://example.com/v1/responses"
   );
+});
+
+test("recognizes built-in API origins and xAI image requirements", () => {
+  assert.equal(isBuiltInApiEndpoint("https://api.x.ai/v1/responses"), true);
+  assert.equal(isBuiltInApiEndpoint("https://example.com/v1/responses"), false);
+  assert.equal(isXaiEndpoint("https://api.x.ai/v1/responses"), true);
+  assert.equal(isXaiEndpoint("https://api.openai.com/v1/responses"), false);
+  assert.equal(isXaiCompatibleImageType("image/jpeg"), true);
+  assert.equal(isXaiCompatibleImageType("image/png"), true);
+  assert.equal(isXaiCompatibleImageType("image/webp"), false);
 });
 
 test("builds a Jarless-compatible stateless Responses vision request", () => {
@@ -117,6 +134,20 @@ test("builds a Jarless-compatible stateless Responses vision request", () => {
   assert.deepEqual(request.reasoning, { effort: "xhigh" });
   assert.equal(request.input[0].content[1].type, "input_image");
   assert.equal("max_output_tokens" in request, false);
+});
+
+test("builds an xAI-compatible image reasoning request", () => {
+  const request = buildResponsesRequest({
+    model: "grok-4.6",
+    instruction: "Analyze",
+    imageDataUrl: "data:image/png;base64,abc",
+    reasoningEffort: "high",
+    disableStorage: true
+  });
+  assert.equal(request.model, "grok-4.6");
+  assert.equal(request.store, false);
+  assert.deepEqual(request.reasoning, { effort: "high" });
+  assert.equal(request.input[0].content[1].image_url, "data:image/png;base64,abc");
 });
 
 test("uses the LAX art-direction instruction with an English 300-550 word target", () => {

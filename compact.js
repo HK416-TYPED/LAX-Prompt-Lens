@@ -7,10 +7,12 @@ import {
   chooseImageUrl,
   extractChatText,
   extractResponsesText,
+  isBuiltInApiEndpoint,
   normalizeVisualPrompt,
   parsePostUrl,
   resolveApiEndpoint
 } from "./core.js";
+import { fetchImageAsDataUrl } from "./image-utils.js";
 
 const DEFAULTS = {
   providerPreset: "jarless",
@@ -113,7 +115,7 @@ async function runPipeline() {
     setStatus("busy", "分析主图与美术语言…");
     const imageUrl = chooseImageUrl(post, settings.imageQuality) || post.preview_file_url;
     if (!imageUrl) throw new Error("帖子没有可读取的主图 URL");
-    const imageDataUrl = await fetchImageAsDataUrl(imageUrl, post.preview_file_url);
+    const imageDataUrl = await fetchImageAsDataUrl(imageUrl, post.preview_file_url, { endpoint });
     const visualPrompt = await callVisionApi({ endpoint, apiKey, imageDataUrl });
 
     combinedPrompt = buildCombinedPrompt(tagPrompt, visualPrompt, settings.promptOrder);
@@ -193,37 +195,10 @@ function fetchDanbooruPost(apiUrl) {
 
 async function verifyEndpointPermission(endpoint) {
   const url = new URL(endpoint);
-  if (["https://api.openai.com", "https://jarlessapi.com"].includes(url.origin)) return;
+  if (isBuiltInApiEndpoint(endpoint)) return;
   const originPattern = `${url.origin}/*`;
   const granted = await chrome.permissions.contains({ origins: [originPattern] });
   if (!granted) throw new Error("请先在完整版中授权这个自定义 API 地址");
-}
-
-async function fetchImageAsDataUrl(primaryUrl, fallbackUrl) {
-  try {
-    return await downloadAsDataUrl(primaryUrl);
-  } catch (error) {
-    if (!fallbackUrl || fallbackUrl === primaryUrl) throw error;
-    return downloadAsDataUrl(fallbackUrl);
-  }
-}
-
-async function downloadAsDataUrl(url) {
-  const response = await fetch(url, { credentials: "omit" });
-  if (!response.ok) throw new Error(`主图下载失败（HTTP ${response.status}）`);
-  const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("主图不是受支持的静态图像");
-  if (blob.size > 20 * 1024 * 1024) throw new Error("主图超过 20 MB，请在完整版选择 Sample 图像");
-  return blobToDataUrl(blob);
-}
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("无法读取主图数据"));
-    reader.readAsDataURL(blob);
-  });
 }
 
 async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {

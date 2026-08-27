@@ -53,6 +53,7 @@ input::placeholder { color: #4f5a60; }
 .status[data-state="success"] i { background: var(--success); }
 .status[data-state="error"] { color: var(--danger); }
 .status[data-state="error"] i { background: var(--danger); }
+.data-note { margin: 9px 0 0; color: #778289; font-size: 8px; line-height: 1.45; }
 .result-meta { margin: 7px 0 0; color: #667278; font: 650 8px/1.5 "Cascadia Code", Consolas, monospace; }
 .is-hidden { display: none; }
 footer { display: flex; justify-content: space-between; margin-top: 10px; color: #536067; font: 700 7px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .08em; }

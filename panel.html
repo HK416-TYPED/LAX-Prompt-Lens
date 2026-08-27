@@ -87,8 +87,9 @@
           <label class="field field-wide">
             <span>服务预设</span>
             <select id="provider-preset">
-              <option value="jarless">JarlessAPI（推荐）</option>
               <option value="openai">OpenAI 官方</option>
+              <option value="xai">xAI Grok 官方</option>
+              <option value="jarless">JarlessAPI（默认）</option>
               <option value="custom">自定义兼容服务</option>
             </select>
           </label>
@@ -96,8 +97,8 @@
           <label class="field">
             <span>接口模式</span>
             <select id="api-mode">
-              <option value="responses">OpenAI Responses</option>
-              <option value="chat">兼容 Chat Completions</option>
+              <option value="responses">Responses API（兼容协议）</option>
+              <option value="chat">Chat Completions（兼容协议）</option>
             </select>
           </label>
 
@@ -109,6 +110,7 @@
           <label class="field field-wide">
             <span>Base URL 或完整接口地址</span>
             <input id="endpoint" type="url" value="https://jarlessapi.com" spellcheck="false">
+            <small id="resolved-endpoint" class="endpoint-preview">实际请求：等待解析接口地址</small>
           </label>
 
           <label class="field field-wide">
@@ -169,7 +171,7 @@
             <span>包含 meta tags</span>
           </label>
         </div>
-        <p class="privacy-note">Key 只用于你设置的接口。关闭“保存”后，刷新侧边栏即清除。</p>
+        <p class="privacy-note">点击“提取并分析”会把帖子主图与分析指令发送到你选择的视觉 API。API Key 仅发送到该服务；关闭“保存”后，刷新侧边栏即清除。</p>
       </details>
 
       <section id="preview-card" class="preview-card is-hidden" aria-labelledby="preview-title">

@@ -7,10 +7,12 @@ import {
   chooseImageUrl,
   extractChatText,
   extractResponsesText,
+  isBuiltInApiEndpoint,
   normalizeVisualPrompt,
   parsePostUrl,
   resolveApiEndpoint
 } from "./core.js";
+import { fetchImageAsDataUrl } from "./image-utils.js";
 
 const EXAMPLE_URL = "https://shima.donmai.us/posts/11647422?q=girls_frontline_2%3A_exilium";
 const DEFAULT_ENDPOINTS = {
@@ -30,6 +32,13 @@ const PROVIDER_PRESETS = {
     endpoint: "https://api.openai.com/v1/responses",
     model: "gpt-5.6-luna",
     reasoningEffort: "xhigh",
+    disableStorage: true
+  },
+  xai: {
+    apiMode: "responses",
+    endpoint: "https://api.x.ai",
+    model: "grok-4.6",
+    reasoningEffort: "high",
     disableStorage: true
   }
 };
@@ -55,6 +64,7 @@ const elements = {
   providerPreset: document.querySelector("#provider-preset"),
   apiMode: document.querySelector("#api-mode"),
   endpoint: document.querySelector("#endpoint"),
+  resolvedEndpoint: document.querySelector("#resolved-endpoint"),
   model: document.querySelector("#model"),
   reasoningEffort: document.querySelector("#reasoning-effort"),
   disableStorage: document.querySelector("#disable-storage"),
@@ -106,6 +116,7 @@ async function restoreSettings() {
   elements.saveKey.checked = Boolean(saved.saveKey);
   elements.apiKey.value = saved.saveKey ? (saved.apiKey || "") : "";
   lastDefaultEndpoint = DEFAULT_ENDPOINTS[elements.apiMode.value];
+  updateEndpointPreview();
 }
 
 function bindEvents() {
@@ -125,6 +136,7 @@ function bindEvents() {
 
   elements.providerPreset.addEventListener("change", () => {
     applyProviderPreset(elements.providerPreset.value);
+    updateEndpointPreview();
     persistSettings();
   });
 
@@ -134,8 +146,11 @@ function bindEvents() {
       elements.endpoint.value = DEFAULT_ENDPOINTS[elements.apiMode.value];
     }
     lastDefaultEndpoint = DEFAULT_ENDPOINTS[elements.apiMode.value];
+    updateEndpointPreview();
     persistSettings();
   });
+
+  elements.endpoint.addEventListener("input", updateEndpointPreview);
 
   elements.toggleKey.addEventListener("click", () => {
     const showing = elements.apiKey.type === "text";
@@ -217,6 +232,26 @@ function applyProviderPreset(provider) {
   lastDefaultEndpoint = DEFAULT_ENDPOINTS[preset.apiMode];
 }
 
+function updateEndpointPreview() {
+  const providerNames = {
+    openai: "OpenAI",
+    xai: "xAI Grok",
+    jarless: "JarlessAPI",
+    custom: "自定义服务"
+  };
+  try {
+    const endpoint = resolveApiEndpoint(
+      elements.endpoint.value,
+      elements.apiMode.value,
+      elements.providerPreset.value
+    );
+    const provider = providerNames[elements.providerPreset.value] || "自定义服务";
+    elements.resolvedEndpoint.textContent = `实际请求：${provider} · ${endpoint}`;
+  } catch {
+    elements.resolvedEndpoint.textContent = "实际请求：等待有效接口地址";
+  }
+}
+
 async function runPipeline({ tagsOnly }) {
   diagnosticRun = {
     version: chrome.runtime.getManifest().version,
@@ -266,7 +301,7 @@ async function runPipeline({ tagsOnly }) {
     setStatus("busy", "正在读取主图并进行专业画面分析…");
     const imageUrl = chooseImageUrl(post, elements.imageQuality.value);
     if (!imageUrl) throw new Error("这个帖子没有可读取的主图 URL。 ");
-    const imageDataUrl = await fetchImageAsDataUrl(imageUrl, post.preview_file_url);
+    const imageDataUrl = await fetchImageAsDataUrl(imageUrl, post.preview_file_url, { endpoint });
     const visualPrompt = await callVisionApi({ endpoint, apiKey, imageDataUrl });
 
     elements.visualOutput.value = visualPrompt;
@@ -289,7 +324,7 @@ async function runPipeline({ tagsOnly }) {
 
 async function ensureEndpointPermission(endpoint) {
   const url = new URL(endpoint);
-  if (["https://api.openai.com", "https://jarlessapi.com"].includes(url.origin)) return;
+  if (isBuiltInApiEndpoint(endpoint)) return;
   const originPattern = `${url.origin}/*`;
   const hasPermission = await chrome.permissions.contains({ origins: [originPattern] });
   if (hasPermission) return;
@@ -462,33 +497,6 @@ function renderPreview(post) {
   const size = post.image_width && post.image_height ? `${post.image_width} × ${post.image_height}` : "尺寸未知";
   elements.postMeta.textContent = `Post #${post.id} · ${size} · Rating ${String(post.rating || "—").toUpperCase()}`;
   elements.previewCard.classList.remove("is-hidden");
-}
-
-async function fetchImageAsDataUrl(primaryUrl, fallbackUrl) {
-  try {
-    return await downloadAsDataUrl(primaryUrl);
-  } catch (error) {
-    if (!fallbackUrl || fallbackUrl === primaryUrl) throw error;
-    return downloadAsDataUrl(fallbackUrl);
-  }
-}
-
-async function downloadAsDataUrl(url) {
-  const response = await fetch(url, { credentials: "omit" });
-  if (!response.ok) throw new Error(`主图下载失败（HTTP ${response.status}）。`);
-  const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("主图不是视觉模型支持的静态图像。 ");
-  if (blob.size > 20 * 1024 * 1024) throw new Error("主图超过 20 MB，请改用 Sample 图像质量。 ");
-  return blobToDataUrl(blob);
-}
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("无法读取主图数据。 "));
-    reader.readAsDataURL(blob);
-  });
 }
 
 async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {

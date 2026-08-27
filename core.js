@@ -5,6 +5,11 @@ const CATEGORY_FIELDS = [
   "tag_string_character",
   "tag_string_general"
 ];
+const BUILT_IN_API_ORIGINS = new Set([
+  "https://api.openai.com",
+  "https://api.x.ai",
+  "https://jarlessapi.com"
+]);
 
 export function parsePostUrl(rawValue) {
   const value = String(rawValue || "").trim();
@@ -85,6 +90,22 @@ export function chooseImageUrl(post, quality = "large") {
     return post.file_url || post.large_file_url || post.preview_file_url || "";
   }
   return post.large_file_url || post.file_url || post.preview_file_url || "";
+}
+
+export function isBuiltInApiEndpoint(rawValue) {
+  try {
+    return BUILT_IN_API_ORIGINS.has(new URL(String(rawValue || "").trim()).origin);
+  } catch {
+    return false;
+  }
+}
+
+export function isXaiEndpoint(rawValue) {
+  try {
+    return new URL(String(rawValue || "").trim()).origin === "https://api.x.ai";
+  } catch {
+    return false;
+  }
 }
 
 export function resolveApiEndpoint(rawValue, mode = "responses", provider = "custom") {

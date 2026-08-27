@@ -170,6 +170,7 @@ input::placeholder, textarea::placeholder { color: #485158; }
 .check-field input { width: 14px; height: 14px; accent-color: var(--accent); }
 .compact-check { align-self: end; height: 40px; }
 .privacy-note { margin: 0 0 16px; color: var(--dim); font-size: 9px; line-height: 1.55; }
+.endpoint-preview { display: block; margin-top: 7px; color: #8f9a9c; font: 650 8px/1.45 "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere; }
 
 .preview-card { display: grid; grid-template-columns: 42% 1fr; margin-top: 10px; overflow: hidden; }
 .preview-frame { position: relative; min-height: 168px; background: #030506; }
