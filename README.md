@@ -45,7 +45,7 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 - **Professional visual language** — prioritizes the face, silhouette, composition, depth, rendering method, color hierarchy, and lighting logic instead of listing every visible object.
 - **Descriptive output** — normalizes accidental imperative openings such as `Create ...` into a coherent `A ...` / `An ...` image prompt.
 - **Two interface modes** — a full Chrome Side Panel and a compact toolbar popup.
-- **Provider flexibility** — presets for JarlessAPI Responses and the official OpenAI API, plus an optional compatible custom endpoint.
+- **Provider flexibility** — supports the official OpenAI Responses API, a JarlessAPI Responses preset, and an optional compatible custom endpoint.
 - **Local-first key handling** — the API key is session-only by default and is saved locally only when the user explicitly enables it.
 - **Stateless requests** — Responses requests use `store: false`.
 
@@ -70,7 +70,15 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 
 Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps only the URL field, generate action, combined-copy button, and a link back to the full panel. Current settings and session results are shared between both modes.
 
-### Default API preset
+### API support and current default
+
+Supported providers are presented in this order:
+
+1. **Official OpenAI Responses API**
+2. **JarlessAPI Responses** — the currently shipped default preset
+3. **Compatible custom endpoints**
+
+The extension currently opens with the following JarlessAPI preset:
 
 | Setting | Default |
 | --- | --- |
@@ -81,7 +89,7 @@ Use **Compact mode** from the full panel to switch the toolbar action into a sma
 | Response storage | disabled (`store: false`) |
 | Image source | Danbooru sample image when available |
 
-The extension also supports the official OpenAI Responses API and compatible custom endpoints. Every user must provide their own API key; no key is included in this repository.
+Every user must provide their own API key for the selected provider; no key is included in this repository.
 
 ### Tag formatting
 
@@ -121,7 +129,7 @@ Current test coverage includes URL parsing, API fallbacks, category ordering, ta
 
 ### Disclaimer
 
-LAX Prompt Lens is an independent tool and is not affiliated with Danbooru, JarlessAPI, or OpenAI. Respect source-site terms, artist rights, and the policies of your selected model provider.
+LAX Prompt Lens is an independent tool and is not affiliated with Danbooru, OpenAI, or JarlessAPI. Respect source-site terms, artist rights, and the policies of your selected model provider.
 
 ---
 
@@ -158,7 +166,7 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 - **专业画面分析**：优先关注面部、轮廓、构图、空间、绘制技法、色彩层级和光照逻辑，不机械枚举全部物体。
 - **描述式输出**：自动把模型偶发返回的 `Create ...` 命令式开头整理为连贯的 `A ...` / `An ...` 图像提示词。
 - **两种界面模式**：提供完整 Chrome 侧边栏和紧凑工具栏小窗。
-- **多服务支持**：内置 JarlessAPI Responses、OpenAI 官方 API 预设，并可选兼容自定义接口。
+- **多服务支持**：支持 OpenAI 官方 Responses API、JarlessAPI Responses 预设，并可选兼容自定义接口。
 - **本地优先的 Key 管理**：API Key 默认只在当前会话使用；仅在使用者主动勾选后保存到本机。
 - **无状态请求**：Responses 请求设置 `store: false`。
 
@@ -183,7 +191,15 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 
 在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗只保留帖子 URL、生成按钮、组合结果复制按钮和返回完整版入口；设置与本次会话结果会在两个模式之间共享。
 
-### 默认 API 预设
+### API 支持与当前默认预设
+
+README 按以下顺序介绍支持的服务：
+
+1. **OpenAI 官方 Responses API**
+2. **JarlessAPI Responses**：当前随扩展提供的默认预设
+3. **兼容的自定义接口**
+
+扩展当前默认打开以下 JarlessAPI 预设：
 
 | 设置 | 默认值 |
 | --- | --- |
@@ -194,7 +210,7 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 | 响应留存 | 关闭（`store: false`） |
 | 图片来源 | 优先使用 Danbooru sample 图 |
 
-扩展同样支持 OpenAI 官方 Responses API 与兼容的自定义接口。每位使用者都需要填写自己的 API Key；本仓库不包含任何 Key。
+每位使用者都需要为所选服务填写自己的 API Key；本仓库不包含任何 Key。
 
 ### 标签格式
 
@@ -234,4 +250,4 @@ node --test
 
 ### 声明
 
-LAX Prompt Lens 是独立工具，与 Danbooru、JarlessAPI 或 OpenAI 均无隶属或合作关系。请遵守来源网站条款、创作者权益及所选模型服务商的政策。
+LAX Prompt Lens 是独立工具，与 Danbooru、OpenAI 或 JarlessAPI 均无隶属或合作关系。请遵守来源网站条款、创作者权益及所选模型服务商的政策。
