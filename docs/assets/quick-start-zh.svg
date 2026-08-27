@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">LAX Prompt Lens 快速上手</title>
+  <desc id="desc">三个步骤：粘贴 Danbooru 链接、提取并分析、复制标签与自然语言提示词。</desc>
+  <defs>
+    <linearGradient id="hot" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffc15a"/>
+      <stop offset="1" stop-color="#ff684f"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#171a20"/>
+      <stop offset="1" stop-color="#101217"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#2b3038" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="#090a0d"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+  <path d="M0 0h500L350 60H0z" fill="#14171c"/>
+  <path d="M1600 900h-500l150-60h350z" fill="#14171c"/>
+  <path d="M0 68h330" stroke="#ff744f" stroke-width="3"/>
+  <path d="M1270 832h330" stroke="#dfff18" stroke-width="3"/>
+  <g transform="translate(92 80)">
+    <g transform="skewX(-12)">
+      <rect width="68" height="68" rx="14" fill="#ff684f"/>
+      <path d="M17 51 42 13M30 56 55 18" stroke="#101217" stroke-width="10" stroke-linecap="round"/>
+    </g>
+    <text x="98" y="29" fill="#fff7ee" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800" letter-spacing="1">LAX PROMPT LENS</text>
+    <text x="98" y="59" fill="#8f98a6" font-family="Consolas, monospace" font-size="14" letter-spacing="4">DANBOORU · VISION · PROMPT</text>
+  </g>
+  <g transform="translate(92 205)">
+    <text fill="#fff7ee" font-family="Microsoft YaHei, Arial, sans-serif" font-size="58" font-weight="900" letter-spacing="2">从参考图到专业美术指导</text>
+    <text y="54" fill="#a6adb8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="20">三步获得标签提示词与专业画面分析语言。</text>
+  </g>
+  <path d="M162 422H1438" stroke="#3a404a" stroke-width="2"/>
+  <path d="M240 422H800" stroke="url(#hot)" stroke-width="5" filter="url(#glow)"/>
+  <circle cx="240" cy="422" r="9" fill="#ffc15a"/>
+  <circle cx="800" cy="422" r="9" fill="#ff684f"/>
+  <circle cx="1360" cy="422" r="9" fill="#dfff18"/>
+  <g transform="translate(92 470)">
+    <path d="M0 18 18 0h394v322l-18 18H0z" fill="url(#panel)" stroke="#3b424d" stroke-width="2"/>
+    <path d="M0 18 18 0h92L92 18z" fill="#ffc15a"/>
+    <text x="28" y="72" fill="#ffc15a" font-family="Microsoft YaHei, Consolas, monospace" font-size="18" font-weight="700">01 / 输入</text>
+    <text x="28" y="116" fill="#fff7ee" font-family="Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="800">粘贴帖子链接</text>
+    <rect x="28" y="150" width="356" height="66" rx="12" fill="#0b0d11" stroke="#343a44"/>
+    <circle cx="56" cy="183" r="7" fill="#ff684f"/>
+    <path d="M78 178h253M78 190h173" stroke="#707986" stroke-width="7" stroke-linecap="round"/>
+    <text x="28" y="267" fill="#929ba8" font-family="Microsoft YaHei, Arial, sans-serif" font-size="16">支持 donmai.us 帖子链接</text>
+    <text x="28" y="297" fill="#646d7a" font-family="Microsoft YaHei, Consolas, monospace" font-size="13">公开帖子 JSON + 主图</text>
+  </g>
+  <g transform="translate(594 470)">
+    <path d="M0 18 18 0h394v322l-18 18H0z" fill="url(#panel)" stroke="#3b424d" stroke-width="2"/>
+    <path d="M0 18 18 0h92L92 18z" fill="#ff8755"/>
+    <text x="28" y="72" fill="#ff8755" font-family="Microsoft YaHei, Consolas, monospace" font-size="18" font-weight="700">02 / 处理</text>
+    <text x="28" y="116" fill="#fff7ee" font-family="Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="800">提取 + 分析</text>
+    <rect x="28" y="150" width="356" height="66" rx="12" fill="url(#hot)"/>
+    <text x="206" y="191" text-anchor="middle" fill="#111318" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="900">启动 PROMPT LENS</text>
+    <g transform="translate(28 248)">
+      <rect width="104" height="30" rx="15" fill="#2b201b" stroke="#ff8755"/>
+      <rect x="116" width="104" height="30" rx="15" fill="#2b201b" stroke="#ff8755"/>
+      <rect x="232" width="124" height="30" rx="15" fill="#1c2516" stroke="#dfff18"/>
+      <text x="52" y="20" text-anchor="middle" fill="#ffc15a" font-family="Consolas, monospace" font-size="11">TAGS</text>
+      <text x="168" y="20" text-anchor="middle" fill="#ffc15a" font-family="Microsoft YaHei, Consolas, monospace" font-size="11">视觉</text>
+      <text x="294" y="20" text-anchor="middle" fill="#dfff18" font-family="Microsoft YaHei, Consolas, monospace" font-size="11">美术指导</text>
+    </g>
+  </g>
+  <g transform="translate(1096 470)">
+    <path d="M0 18 18 0h394v322l-18 18H0z" fill="url(#panel)" stroke="#3b424d" stroke-width="2"/>
+    <path d="M0 18 18 0h92L92 18z" fill="#dfff18"/>
+    <text x="28" y="72" fill="#dfff18" font-family="Microsoft YaHei, Consolas, monospace" font-size="18" font-weight="700">03 / 输出</text>
+    <text x="28" y="116" fill="#fff7ee" font-family="Microsoft YaHei, Arial, sans-serif" font-size="30" font-weight="800">复制 TAGS + NL</text>
+    <rect x="28" y="150" width="356" height="66" rx="12" fill="#171d12" stroke="#dfff18"/>
+    <text x="206" y="191" text-anchor="middle" fill="#dfff18" font-family="Microsoft YaHei, Arial, sans-serif" font-size="18" font-weight="900">复制组合提示词</text>
+    <path d="M28 251h322M28 270h270M28 289h300" stroke="#6f7885" stroke-width="7" stroke-linecap="round"/>
+    <rect x="342" y="246" width="42" height="42" rx="8" fill="#252a31" stroke="#4a525e"/>
+    <path d="M353 258h16v16h-16zM359 252h16v16" fill="none" stroke="#fff7ee" stroke-width="2"/>
+  </g>
+  <g transform="translate(92 850)">
+    <text fill="#59616d" font-family="Microsoft YaHei, Consolas, monospace" font-size="13" letter-spacing="2">CHROME MV3 / 侧边栏 + 工具栏小窗</text>
+    <text x="1416" text-anchor="end" fill="#59616d" font-family="Consolas, monospace" font-size="13" letter-spacing="2">DESIGNED BY LAX</text>
+  </g>
+</svg>

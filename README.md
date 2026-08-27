@@ -137,6 +137,21 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 4. 生成约 300–550 词的英文专业美术指导 Prompt，重点分析构图、镜头、空间层次、绘制方法、边缘控制、色彩、光照、材质与编辑美学；
 5. 分别输出 Tags Prompt、Visual NL Prompt 和 Combined Prompt。
 
+![三步快速上手](docs/assets/quick-start-zh.png)
+
+### 界面预览
+
+<table>
+  <tr>
+    <th>完整版侧边栏</th>
+    <th>工具栏小窗模式</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/assets/full-panel.png" alt="LAX Prompt Lens 完整版侧边栏" width="360"></td>
+    <td align="center" valign="top"><img src="docs/assets/compact-popup.png" alt="LAX Prompt Lens 小窗模式" width="380"></td>
+  </tr>
+</table>
+
 ### 核心特点
 
 - **稳定提取标签**：读取 Danbooru 公开帖子 JSON，而不是抓取网页侧栏 DOM。
