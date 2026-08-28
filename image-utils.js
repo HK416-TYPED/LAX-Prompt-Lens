@@ -1,16 +1,17 @@
-import { isXaiEndpoint } from "./core.js";
+import { isXaiVisionTarget } from "./core.js";
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_CONVERSION_PIXELS = 24_000_000;
 const XAI_IMAGE_TYPES = new Set(["image/jpeg", "image/png"]);
+export const MAX_REFERENCE_IMAGES = 4;
 
 export function isXaiCompatibleImageType(mimeType) {
   return XAI_IMAGE_TYPES.has(String(mimeType || "").toLowerCase());
 }
 
-export async function fetchImageAsDataUrl(primaryUrl, fallbackUrl, { endpoint = "" } = {}) {
+export async function fetchImageAsDataUrl(primaryUrl, fallbackUrl, { endpoint = "", model = "" } = {}) {
   const candidates = [...new Set([primaryUrl, fallbackUrl].filter(Boolean))];
-  const requireXaiFormat = isXaiEndpoint(endpoint);
+  const requireXaiFormat = isXaiVisionTarget(endpoint, model);
   let convertibleBlob = null;
   let lastError = null;
 
@@ -30,6 +31,31 @@ export async function fetchImageAsDataUrl(primaryUrl, fallbackUrl, { endpoint = 
   throw lastError || new Error("没有可读取的主图。 ");
 }
 
+export function validateReferenceImageFiles(files) {
+  const images = Array.from(files || []);
+  if (images.length > MAX_REFERENCE_IMAGES) throw new Error(`参考图最多上传 ${MAX_REFERENCE_IMAGES} 张。`);
+  if (images.some((file) => !String(file?.type || "").startsWith("image/"))) {
+    throw new Error("请选择有效的图片文件。 ");
+  }
+  if (images.some((file) => file.size > MAX_IMAGE_BYTES)) {
+    throw new Error("单张参考图不能超过 20 MB。 ");
+  }
+  if (images.reduce((total, file) => total + file.size, 0) > MAX_IMAGE_BYTES) {
+    throw new Error("参考图总大小不能超过 20 MB。 ");
+  }
+  return images;
+}
+
+export async function readReferenceImagesAsDataUrls(files, { endpoint = "", model = "" } = {}) {
+  const images = validateReferenceImageFiles(files);
+  const requireXaiFormat = isXaiVisionTarget(endpoint, model);
+  return Promise.all(images.map((file) =>
+    requireXaiFormat && !isXaiCompatibleImageType(file.type)
+      ? convertToJpegDataUrl(file, "参考图")
+      : blobToDataUrl(file)
+  ));
+}
+
 async function downloadImage(url) {
   const response = await fetch(url, { credentials: "omit" });
   if (!response.ok) throw new Error(`主图下载失败（HTTP ${response.status}）。`);
@@ -39,7 +65,7 @@ async function downloadImage(url) {
   return blob;
 }
 
-async function convertToJpegDataUrl(blob) {
+async function convertToJpegDataUrl(blob, label = "主图") {
   let bitmap;
   try {
     bitmap = await createImageBitmap(blob);
@@ -54,11 +80,13 @@ async function convertToJpegDataUrl(blob) {
     context.drawImage(bitmap, 0, 0, width, height);
     const converted = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.94 });
     if (converted.size > MAX_IMAGE_BYTES) {
-      throw new Error("主图转换为 Grok 支持的 JPEG 后仍超过 20 MB，请选择 Sample 图像质量。 ");
+      throw new Error(label === "主图"
+        ? "主图转换为 Grok 支持的 JPEG 后仍超过 20 MB，请选择 Sample 图像质量。 "
+        : "参考图转换为 Grok 支持的 JPEG 后仍超过 20 MB。 ");
     }
     return blobToDataUrl(converted);
   } catch (error) {
-    throw new Error(`Grok 仅支持 JPEG/PNG，主图自动转换失败：${error?.message || String(error)}`);
+    throw new Error(`Grok 仅支持 JPEG/PNG，${label}自动转换失败：${error?.message || String(error)}`);
   } finally {
     bitmap?.close?.();
   }
@@ -68,7 +96,7 @@ function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("无法读取主图数据。 "));
+    reader.onerror = () => reject(new Error("无法读取图片数据。 "));
     reader.readAsDataURL(blob);
   });
 }
