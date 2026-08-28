@@ -22,7 +22,8 @@ import {
   parseManualPromptResult,
   parsePostUrl,
   readResponsesStream,
-  resolveApiEndpoint
+  resolveApiEndpoint,
+  shouldUseResponsesStream
 } from "../core.js";
 import { isXaiCompatibleImageType, validateReferenceImageFiles } from "../image-utils.js";
 
@@ -153,6 +154,13 @@ test("recognizes built-in API origins and xAI image requirements", () => {
   assert.equal(isXaiCompatibleImageType("image/jpeg"), true);
   assert.equal(isXaiCompatibleImageType("image/png"), true);
   assert.equal(isXaiCompatibleImageType("image/webp"), false);
+});
+
+test("streams Grok Responses requests even without reference images", () => {
+  assert.equal(shouldUseResponsesStream("responses", "grok-4.6"), true);
+  assert.equal(shouldUseResponsesStream("responses", "x-ai/grok-4.6"), true);
+  assert.equal(shouldUseResponsesStream("chat", "grok-4.6"), false);
+  assert.equal(shouldUseResponsesStream("responses", "gpt-5.6-luna"), false);
 });
 
 test("builds a Jarless-compatible stateless Responses vision request", () => {
