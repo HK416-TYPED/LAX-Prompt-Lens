@@ -112,6 +112,10 @@ export function isGrokModel(model) {
   return /(?:^|[\/:._-])grok(?:$|[._-])/i.test(String(model || "").trim());
 }
 
+export function shouldUseResponsesStream(mode, model) {
+  return mode === "responses" && isGrokModel(model);
+}
+
 export function isXaiVisionTarget(rawValue, model = "") {
   return isXaiEndpoint(rawValue) || isGrokModel(model);
 }

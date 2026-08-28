@@ -12,12 +12,12 @@ import {
   extractResponsesText,
   formatManualPromptBundle,
   isBuiltInApiEndpoint,
-  isGrokModel,
   normalizeVisualPrompt,
   parseManualPromptResult,
   parsePostUrl,
   readResponsesStream,
-  resolveApiEndpoint
+  resolveApiEndpoint,
+  shouldUseResponsesStream
 } from "./core.js";
 import { fetchImageAsDataUrl, readReferenceImagesAsDataUrls } from "./image-utils.js";
 import { createReferenceImagePicker } from "./reference-picker.js";
@@ -786,7 +786,7 @@ async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {
           }
         ]
       };
-  const shouldStream = mode === "responses" && isGrokModel(body.model);
+  const shouldStream = shouldUseResponsesStream(mode, body.model);
   if (shouldStream) body.stream = true;
 
   const response = await fetch(endpoint, {
@@ -832,7 +832,7 @@ async function callManualPromptApi({ endpoint, apiKey, userText, imageDataUrls, 
           { role: "user", content: buildManualChatContent({ userText, imageDataUrls }) }
         ]
       };
-  const shouldStream = mode === "responses" && imageDataUrls.length > 0 && isGrokModel(body.model);
+  const shouldStream = shouldUseResponsesStream(mode, body.model);
   if (shouldStream) body.stream = true;
 
   const requestBody = JSON.stringify(body);
