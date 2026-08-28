@@ -2,21 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCombinedPrompt,
+  buildManualChatContent,
+  buildManualPromptInstruction,
   buildPostApiUrls,
   buildResponsesRequest,
+  buildTextResponsesRequest,
   buildTagPrompt,
   buildVisionInstruction,
   chooseImageUrl,
   extractChatText,
   extractResponsesText,
+  formatManualPromptBundle,
   formatTag,
   isBuiltInApiEndpoint,
+  isGrokModel,
   isXaiEndpoint,
+  isXaiVisionTarget,
   normalizeVisualPrompt,
+  parseManualPromptResult,
   parsePostUrl,
+  readResponsesStream,
   resolveApiEndpoint
 } from "../core.js";
-import { isXaiCompatibleImageType } from "../image-utils.js";
+import { isXaiCompatibleImageType, validateReferenceImageFiles } from "../image-utils.js";
 
 const examplePost = {
   tag_string_artist: "scotch_quazar",
@@ -109,6 +117,28 @@ test("resolves built-in and OpenAI-compatible base URLs", () => {
     resolveApiEndpoint("https://example.com/v1/responses", "responses", "custom"),
     "https://example.com/v1/responses"
   );
+  assert.throws(
+    () => resolveApiEndpoint("https://example.com/v1/chat/completions", "responses", "custom"),
+    /接口模式选择了 Responses API/
+  );
+  assert.throws(
+    () => resolveApiEndpoint("https://example.com/v1/responses", "chat", "custom"),
+    /接口模式选择了 Chat Completions/
+  );
+});
+
+test("reads output text from a Responses SSE stream", async () => {
+  const response = new Response([
+    'data: {"type":"response.created"}',
+    '',
+    'data: {"type":"response.output_text.delta","delta":"{\\"base\\"}"}',
+    '',
+    'data: {"type":"response.output_text.delta","delta":" done"}',
+    '',
+    'data: [DONE]',
+    ''
+  ].join("\n"), { headers: { "content-type": "text/event-stream" } });
+  assert.equal(await readResponsesStream(response), '{"base"} done');
 });
 
 test("recognizes built-in API origins and xAI image requirements", () => {
@@ -116,6 +146,10 @@ test("recognizes built-in API origins and xAI image requirements", () => {
   assert.equal(isBuiltInApiEndpoint("https://example.com/v1/responses"), false);
   assert.equal(isXaiEndpoint("https://api.x.ai/v1/responses"), true);
   assert.equal(isXaiEndpoint("https://api.openai.com/v1/responses"), false);
+  assert.equal(isGrokModel("grok-4.6"), true);
+  assert.equal(isGrokModel("x-ai/grok-4.6"), true);
+  assert.equal(isGrokModel("gpt-5.6-luna"), false);
+  assert.equal(isXaiVisionTarget("https://third-party.example/v1/responses", "grok-4.6"), true);
   assert.equal(isXaiCompatibleImageType("image/jpeg"), true);
   assert.equal(isXaiCompatibleImageType("image/png"), true);
   assert.equal(isXaiCompatibleImageType("image/webp"), false);
@@ -150,6 +184,50 @@ test("builds an xAI-compatible image reasoning request", () => {
   assert.equal(request.input[0].content[1].image_url, "data:image/png;base64,abc");
 });
 
+test("builds a stateless Responses request for a manual text concept", () => {
+  const request = buildTextResponsesRequest({
+    model: "gpt-5.6-luna",
+    instruction: "Return JSON",
+    userText: "银发少女站在雨夜街道",
+    reasoningEffort: "high",
+    disableStorage: true
+  });
+  assert.equal(request.store, false);
+  assert.deepEqual(request.reasoning, { effort: "high" });
+  assert.equal(request.input[0].content.length, 1);
+  assert.equal(request.input[0].content[0].type, "input_text");
+  assert.match(request.input[0].content[0].text, /<user_concept>[\s\S]*银发少女/);
+});
+
+test("builds manual multimodal requests with ordered reference images", () => {
+  const images = ["data:image/jpeg;base64,one", "data:image/png;base64,two"];
+  const request = buildTextResponsesRequest({
+    model: "gpt-5.6-luna",
+    instruction: "Return JSON",
+    userText: "保留人物，改成雨夜",
+    imageDataUrls: images
+  });
+  assert.deepEqual(
+    request.input[0].content.map(({ type }) => type),
+    ["input_text", "input_text", "input_image", "input_text", "input_image"]
+  );
+  assert.match(request.input[0].content[1].text, /primary/);
+  assert.match(request.input[0].content[3].text, /supplementary/);
+  assert.equal(request.input[0].content[4].image_url, images[1]);
+
+  const chat = buildManualChatContent({ userText: "", imageDataUrls: images });
+  assert.deepEqual(chat.map(({ type }) => type), ["text", "text", "image_url", "text", "image_url"]);
+  assert.equal(chat[2].image_url.url, images[0]);
+});
+
+test("validates local reference image limits", () => {
+  const image = (name, size = 1024) => ({ name, size, type: "image/png", lastModified: 1 });
+  assert.equal(validateReferenceImageFiles([image("one.png")]).length, 1);
+  assert.throws(() => validateReferenceImageFiles(Array.from({ length: 5 }, (_, index) => image(`${index}.png`))), /最多上传 4 张/);
+  assert.throws(() => validateReferenceImageFiles([{ name: "notes.txt", size: 10, type: "text/plain" }]), /有效的图片/);
+  assert.throws(() => validateReferenceImageFiles([image("large.png", 21 * 1024 * 1024)]), /单张参考图/);
+});
+
 test("uses the LAX art-direction instruction with an English 300-550 word target", () => {
   const instruction = buildVisionInstruction();
   assert.match(instruction, /^Analyze the reference image as a professional Japanese illustration art director/);
@@ -160,6 +238,76 @@ test("uses the LAX art-direction instruction with an English 300-550 word target
   assert.match(instruction, /This applies to the entire output, not only its first sentence/);
   assert.match(instruction, /never write directives such as "Place the character/);
   assert.match(instruction, /first three characters must be "An "/);
+});
+
+test("defines NovelAI V5 section instructions for manual concepts", () => {
+  const instruction = buildManualPromptInstruction();
+  assert.match(instruction, /"base_prompt"/);
+  assert.match(instruction, /"character_prompts"/);
+  assert.match(instruction, /"undesired_content"/);
+  assert.match(instruction, /Chinese or English/);
+  assert.match(instruction, /first image as the primary reference/);
+  assert.match(instruction, /explicit additions, changes, and exclusions override conflicting image details/);
+  assert.match(instruction, /including synonyms or paraphrases/);
+  assert.match(instruction, /Merge equivalent or near-equivalent tags/);
+  assert.doesNotMatch(instruction, /at most four short sentences/);
+  assert.doesNotMatch(instruction, /Do not invent objects/);
+  assert.doesNotMatch(instruction, /only as source material/);
+});
+
+test("supports simple and detailed manual instruction modes", () => {
+  const simple = buildManualPromptInstruction();
+  assert.equal(simple, buildManualPromptInstruction("simple"));
+  assert.equal(simple, buildManualPromptInstruction("unsupported"));
+  assert.doesNotMatch(simple, /Detailed mode/);
+
+  const detailed = buildManualPromptInstruction("detailed");
+  for (const instruction of [simple, detailed]) {
+    assert.match(instruction, /"base_prompt"/);
+    assert.match(instruction, /"character_prompts"/);
+    assert.match(instruction, /including synonyms or paraphrases/);
+  }
+  assert.match(detailed, /every distinct visual attribute that can be modified independently/);
+  assert.match(detailed, /natural-language fields correspondingly more descriptive/);
+  assert.match(detailed, /reasonable, non-conflicting visual details/);
+  assert.match(detailed, /Do not change the identity, number of characters, actions, composition/);
+  assert.match(detailed, /Merge only truly duplicate or interchangeable synonyms/);
+  assert.match(detailed, /"short hair", "curled hair", and "green hair" must remain separate tags/);
+});
+
+test("parses and formats NovelAI V5 prompt sections", () => {
+  const result = parseManualPromptResult(`\`\`\`json
+{
+  "base_prompt":{"tags":"black and white manga, vertical 2koma, vertical 2koma","natural_language":"The upper panel shows a woman flying from behind. The lower panel frames her face inside a smartphone screen."},
+  "character_prompts":[
+    {"name":"Upper panel","position":"upper center","tags":"Tatsumaki, short curly hair, black dress","natural_language":""},
+    {"name":"Phone screen","position":"lower center, inside the phone screen","tags":"Tatsumaki, short curly hair, sharp eyes","natural_language":""}
+  ],
+  "undesired_content":"color, merged panels, color"
+}
+\`\`\``);
+  assert.equal(result.basePrompt.tags, "black and white manga, vertical 2koma");
+  assert.equal(result.characterPrompts.length, 2);
+  assert.equal(result.characterPrompts[0].prompt, "Tatsumaki, short curly hair, black dress");
+  assert.equal(result.undesiredContent, "color, merged panels");
+  assert.match(formatManualPromptBundle(result), /^\[BASE PROMPT\]/);
+  assert.match(formatManualPromptBundle(result), /\[CHARACTER 2: Phone screen\]/);
+  assert.match(formatManualPromptBundle(result), /\[UNDESIRED CONTENT\]/);
+  assert.throws(() => parseManualPromptResult("not json"), /格式无效/);
+  assert.throws(() => parseManualPromptResult('{"base_prompt":{"tags":"1girl"}}'), /内容不完整/);
+});
+
+test("removes exact tag concepts already present in natural language", () => {
+  const result = parseManualPromptResult(JSON.stringify({
+    base_prompt: {
+      tags: "short hair, black dress, vertical 2koma",
+      natural_language: "She has short hair. The upper and lower panels show different viewpoints."
+    },
+    character_prompts: [],
+    undesired_content: ""
+  }));
+  assert.equal(result.basePrompt.tags, "black dress, vertical 2koma");
+  assert.doesNotMatch(result.basePrompt.prompt.split("\n")[0], /short hair/);
 });
 
 test("normalizes imperative model output into a descriptive A/An prompt", () => {
