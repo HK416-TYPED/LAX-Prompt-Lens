@@ -6,7 +6,7 @@
     "message": "LAX Lens"
   },
   "extensionDescription": {
-    "message": "Extract Danbooru tags and generate professional illustration art-direction prompts from reference images."
+    "message": "Extract Danbooru tags, analyze references or written concepts, and generate structured image prompts."
   },
   "actionTitle": {
     "message": "Open LAX Prompt Lens"
