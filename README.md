@@ -24,6 +24,8 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 4. produce a polished 300–550 word English art-direction prompt covering composition, camera, depth, drawing method, edge control, color, lighting, materials, and editorial character;
 5. return the Tags Prompt, Visual NL Prompt, and Combined Prompt separately.
 
+It also provides a **Manual text** mode. Enter an image concept in Chinese or English, optionally attach up to four local reference images, and choose **Simple** (default) or **Detailed** generation. Image-only input reconstructs the primary reference; with both text and images, explicit text requirements take priority. The configured AI API returns a NovelAI V5 base prompt, positioned character prompts, and undesired content without requiring a Danbooru post.
+
 ![Three-step quick start](docs/assets/quick-start.png)
 
 ### Interface preview
@@ -45,6 +47,7 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 - **Professional visual language** — prioritizes the face, silhouette, composition, depth, rendering method, color hierarchy, and lighting logic instead of listing every visible object.
 - **Descriptive output** — normalizes accidental imperative openings such as `Create ...` into a coherent `A ...` / `An ...` image prompt.
 - **Two interface modes** — a full Chrome Side Panel and a compact toolbar popup.
+- **Manual text generation** — produces NovelAI V5 base and character prompts with cross-field semantic deduplication.
 - **Provider flexibility** — supports the official OpenAI Responses API, the official xAI Grok Responses API, a JarlessAPI Responses preset, and an optional compatible custom endpoint.
 - **Local-first key handling** — the API key is session-only by default and is saved locally only when the user explicitly enables it.
 - **Stateless requests** — Responses requests use `store: false`.
@@ -66,9 +69,11 @@ LAX Prompt Lens is a local Chrome Manifest V3 extension for reference-image anal
 4. Click **Extract & Analyze**.
 5. Copy the Tags Prompt, Visual NL Prompt, or Combined Prompt.
 
+For manual generation, switch the input selector to **Manual text**, choose **Simple** or **Detailed**, enter an image concept and/or attach local reference images, configure an API key, and click **Generate prompts**. The first image is the primary reference, and later images are supplementary. The result is split into Base Prompt, positioned Character Prompts, and Undesired Content.
+
 ### Compact mode
 
-Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps only the URL field, generate action, combined-copy button, and a link back to the full panel. Current settings and session results are shared between both modes.
+Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps the URL/manual-text selector, generate action, result-copy button, and a link back to the full panel. Current inputs and generated results are restored when switching modes or reopening the panel during the same browser session.
 
 ### API support and current default
 
@@ -106,6 +111,7 @@ Underscores become spaces, and parentheses are escaped as `\(` and `\)`. Meta ta
 
 - The extension reads only the public Danbooru post selected by the user.
 - The selected post image and analysis instruction are sent to the API endpoint configured by the user.
+- In Manual text mode, the entered concept and selected local reference images are sent to the configured API endpoint.
 - API keys are sent only to that configured endpoint.
 - Keys are not persisted unless **Save key locally** is enabled.
 - The extension does not vote, favorite, edit, or upload Danbooru content.
@@ -146,6 +152,8 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 4. 生成约 300–550 词的英文专业美术指导 Prompt，重点分析构图、镜头、空间层次、绘制方法、边缘控制、色彩、光照、材质与编辑美学；
 5. 分别输出 Tags Prompt、Visual NL Prompt 和 Combined Prompt。
 
+它也提供**手动文本**模式：输入中文或英文画面构想，可选择附加最多四张本地参考图，再选择默认的**简**模式或更细致的**繁**模式。纯图片输入会复刻主参考图；图文同时输入时，以文字中的明确要求为准。已配置的 AI API 会生成 NovelAI V5 主提示词、定位角色分区提示词和负面提示词，无需 Danbooru 帖子。
+
 ![三步快速上手](docs/assets/quick-start-zh.png)
 
 ### 界面预览
@@ -167,6 +175,7 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 - **专业画面分析**：优先关注面部、轮廓、构图、空间、绘制技法、色彩层级和光照逻辑，不机械枚举全部物体。
 - **描述式输出**：自动把模型偶发返回的 `Create ...` 命令式开头整理为连贯的 `A ...` / `An ...` 图像提示词。
 - **两种界面模式**：提供完整 Chrome 侧边栏和紧凑工具栏小窗。
+- **手动文本生成**：生成 NovelAI V5 主提示词与角色分区，并执行跨字段语义去重。
 - **多服务支持**：支持 OpenAI 官方 Responses API、xAI Grok 官方 Responses API、JarlessAPI Responses 预设，并可选兼容自定义接口。
 - **本地优先的 Key 管理**：API Key 默认只在当前会话使用；仅在使用者主动勾选后保存到本机。
 - **无状态请求**：Responses 请求设置 `store: false`。
@@ -188,9 +197,11 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 4. 点击**提取并分析**。
 5. 复制 Tags Prompt、Visual NL Prompt 或 Combined Prompt。
 
+如需手动生成，将输入模式切换为**手动文本**，选择**简**或**繁**，输入画面构想和/或添加本地参考图，配置 API Key 后点击**生成提示词**。第一张图片为主参考，其余图片为补充参考。结果分为 Base Prompt、带位置的 Character Prompts 和 Undesired Content。
+
 ### 小窗模式
 
-在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗只保留帖子 URL、生成按钮、组合结果复制按钮和返回完整版入口；设置与本次会话结果会在两个模式之间共享。
+在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗保留帖子 URL/手动文本切换、生成按钮、结果复制按钮和返回完整版入口；同一浏览器会话中切换模式或重新打开侧边栏会恢复输入与生成结果。
 
 ### API 支持与当前默认预设
 
@@ -228,6 +239,7 @@ artist → copyright → character → general
 
 - 扩展只读取使用者主动选择的公开 Danbooru 帖子。
 - 帖子图片与分析指令会发送到使用者配置的 API Endpoint。
+- 手动文本模式会把输入的画面构想和所选本地参考图发送到使用者配置的 API Endpoint。
 - API Key 只会发送到该 Endpoint。
 - 除非主动开启**在本机保存 Key**，否则 Key 不会持久化。
 - 扩展不会修改、收藏、评分或上传 Danbooru 内容。

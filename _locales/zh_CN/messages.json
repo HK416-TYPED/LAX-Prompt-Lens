@@ -6,7 +6,7 @@
     "message": "LAX Lens"
   },
   "extensionDescription": {
-    "message": "提取 Danbooru 标签，并根据参考图生成专业的插画 Art Direction 提示词。"
+    "message": "提取 Danbooru 标签，分析参考图或手动画面描述，并生成结构化图像提示词。"
   },
   "actionTitle": {
     "message": "打开 LAX Prompt Lens"

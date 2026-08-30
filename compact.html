@@ -18,21 +18,47 @@
       </header>
 
       <section class="compact-card">
-        <div class="field-label"><span>01 / POST URL</span><span id="version">v—</span></div>
-        <input id="post-url" type="url" spellcheck="false" autocomplete="off" placeholder="粘贴 Danbooru 帖子链接…">
+        <div class="field-label"><span id="input-label">01 / POST URL</span><span id="version">v—</span></div>
+        <div class="source-mode-switch" role="group" aria-label="输入模式">
+          <button type="button" data-source-mode="url" aria-pressed="true">帖子 URL</button>
+          <button type="button" data-source-mode="manual" aria-pressed="false">手动文本</button>
+        </div>
+        <div id="url-input-panel">
+          <input id="post-url" type="url" spellcheck="false" autocomplete="off" placeholder="粘贴 Danbooru 帖子链接…">
+        </div>
+        <div id="manual-input-panel" class="is-hidden">
+          <textarea id="manual-text" maxlength="12000" spellcheck="true" placeholder="输入画面描述；只复刻参考图时可留空…"></textarea>
+          <div class="reference-picker-heading">
+            <span>参考图（最多 4 张）</span>
+            <button id="clear-manual-images" class="inline-button is-hidden" type="button">清空</button>
+          </div>
+          <label id="manual-image-dropzone" class="reference-dropzone" for="manual-images">
+            <input id="manual-images" class="reference-file-input" type="file" accept="image/*" multiple>
+            <b>选择、拖入或粘贴图片</b>
+            <small>无文字时复刻主参考；冲突时文字优先</small>
+          </label>
+          <div id="manual-image-list" class="reference-image-list" aria-live="polite"></div>
+          <div class="manual-detail-mode" role="group" aria-label="提示词细节模式">
+            <span>细节模式</span>
+            <div class="detail-mode-switch">
+              <button type="button" data-manual-detail-mode="simple" aria-pressed="true">简</button>
+              <button type="button" data-manual-detail-mode="detailed" aria-pressed="false">繁</button>
+            </div>
+          </div>
+        </div>
 
         <button id="generate-button" class="generate-button" type="button">
           <span aria-hidden="true">✦</span> 生成 TAG + NL
         </button>
 
         <button id="copy-button" class="copy-button" type="button" disabled>
-          复制生成的 TAG + NL
+          复制组合提示词
         </button>
 
         <div id="status" class="status" data-state="idle" aria-live="polite">
           <i></i><span id="status-text">等待粘贴链接</span>
         </div>
-        <p class="data-note">生成时，帖子主图与分析指令会发送到完整版中选择的视觉 API。</p>
+        <p class="data-note">生成内容会发送到完整版中选择的 API。</p>
         <p id="result-meta" class="result-meta is-hidden">—</p>
       </section>
 

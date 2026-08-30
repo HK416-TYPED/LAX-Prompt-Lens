@@ -108,6 +108,18 @@ export function isXaiEndpoint(rawValue) {
   }
 }
 
+export function isGrokModel(model) {
+  return /(?:^|[\/:._-])grok(?:$|[._-])/i.test(String(model || "").trim());
+}
+
+export function shouldUseResponsesStream(mode, model) {
+  return mode === "responses" && isGrokModel(model);
+}
+
+export function isXaiVisionTarget(rawValue, model = "") {
+  return isXaiEndpoint(rawValue) || isGrokModel(model);
+}
+
 export function resolveApiEndpoint(rawValue, mode = "responses", provider = "custom") {
   let url;
   try {
@@ -126,6 +138,12 @@ export function resolveApiEndpoint(rawValue, mode = "responses", provider = "cus
   const cleanPath = url.pathname.replace(/\/+$/, "") || "/";
   const isCompleteResponses = /\/responses$/i.test(cleanPath);
   const isCompleteChat = /\/chat\/completions$/i.test(cleanPath);
+  if (isCompleteResponses && mode === "chat") {
+    throw new Error("完整接口地址是 Responses API（/responses），但接口模式选择了 Chat Completions。 ");
+  }
+  if (isCompleteChat && mode === "responses") {
+    throw new Error("完整接口地址是 Chat Completions（/chat/completions），但接口模式选择了 Responses API。 ");
+  }
   if (isCompleteResponses || isCompleteChat) {
     url.pathname = cleanPath;
     return url.href;
@@ -164,6 +182,56 @@ export function buildResponsesRequest({
       ]
     }]
   };
+}
+
+export function buildTextResponsesRequest({
+  model,
+  instruction,
+  userText,
+  imageDataUrls = [],
+  reasoningEffort = "xhigh",
+  disableStorage = true
+}) {
+  const images = imageDataUrls.filter(Boolean);
+  const content = [{
+    type: "input_text",
+    text: `${instruction}\n\n${buildManualInputContext(userText, images.length)}`
+  }];
+  images.forEach((imageDataUrl, index) => {
+    content.push(
+      { type: "input_text", text: `Reference image ${index + 1} (${index === 0 ? "primary" : "supplementary"})` },
+      { type: "input_image", image_url: imageDataUrl, detail: "high" }
+    );
+  });
+  return {
+    model,
+    store: !disableStorage,
+    reasoning: { effort: reasoningEffort },
+    input: [{
+      role: "user",
+      content
+    }]
+  };
+}
+
+export function buildManualChatContent({ userText, imageDataUrls = [] }) {
+  const images = imageDataUrls.filter(Boolean);
+  if (!images.length) return String(userText || "").trim();
+  const content = [{ type: "text", text: buildManualInputContext(userText, images.length) }];
+  images.forEach((imageDataUrl, index) => {
+    content.push(
+      { type: "text", text: `Reference image ${index + 1} (${index === 0 ? "primary" : "supplementary"})` },
+      { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
+    );
+  });
+  return content;
+}
+
+function buildManualInputContext(userText, imageCount) {
+  const concept = `<user_concept>\n${String(userText || "").trim()}\n</user_concept>`;
+  return imageCount
+    ? `${concept}\n\n<reference_images>\n${imageCount} image(s) attached in the labeled order below.\n</reference_images>`
+    : concept;
 }
 
 export function buildVisionInstruction() {
@@ -231,6 +299,142 @@ The final prompt should normally be approximately 300–550 words and should rea
 Return only the finished descriptive prompt. The first two characters must be "A " or the first three characters must be "An ". No title, preface, command, explanation, bullets, or Markdown.`;
 }
 
+export function buildManualPromptInstruction(mode = "simple") {
+  const detailInstruction = mode === "detailed"
+    ? `Detailed mode:
+Preserve and split every distinct visual attribute that can be modified independently. Use fine-grained tags for identity, body and facial features, hairstyle, hair properties, each clothing component, cut, color, material, pattern, footwear, and accessories. Make the natural-language fields correspondingly more descriptive about panel composition, pose, action, camera, spatial relationships, rendering, lighting, and material interactions while keeping them editable and avoiding repetition of tags. You may add reasonable, non-conflicting visual details that are not stated by the user when they improve a complete prompt. Do not change the identity, number of characters, actions, composition, panel structure, spatial positions, viewpoint, or core style. Merge only truly duplicate or interchangeable synonyms. Keep related but different attributes separate; for example, "short hair", "curled hair", and "green hair" must remain separate tags. Preserve the same tag/natural-language mutual exclusion rule.`
+    : "";
+  const mergeInstruction = mode === "detailed"
+    ? "Merge only truly duplicate or interchangeable synonyms"
+    : "Merge equivalent or near-equivalent tags into one canonical phrase";
+
+  return `Convert the user's image concept and any attached reference images into a NovelAI Diffusion V5 prompt set. The text input may be Chinese or English; output English only.
+
+When reference images are attached, treat the first image as the primary reference and later images as supplementary references. If the user concept is empty, reconstruct the primary reference as faithfully as possible, including its visible subjects, composition, camera, spatial arrangement, clothing, accessories, style, color, lighting, and rendering. If text is also provided, its explicit additions, changes, and exclusions override conflicting image details; preserve compatible reference details that the text leaves unspecified. Use supplementary references only for compatible details and do not merge distinct subjects or scenes unless the text requests it.
+
+Return exactly this JSON shape:
+{
+  "base_prompt": {"tags": "...", "natural_language": "..."},
+  "character_prompts": [
+    {"name": "...", "position": "...", "tags": "...", "natural_language": "..."}
+  ],
+  "undesired_content": "..."
+}
+
+The base prompt owns the panel layout, scene, global style, camera, spatial relationships, and actions. Character prompts own only identity, physical traits, clothing, accessories, and expression. Create one character prompt for each distinct spatial appearance, even when the same character appears more than once. Position must be a short canvas location such as "upper center" or "lower center, inside the phone screen".
+
+Each concept must appear in exactly one place. If a concept appears in any tags field, it must not appear in natural language, including synonyms or paraphrases; the reverse also applies. Prefer tags for atomic attributes and natural language for layout, relationships, and complex actions. ${mergeInstruction}. Do not repeat a concept between base and character prompts, except that a character's identity may repeat across distinct character prompts required for separate positions.
+
+${detailInstruction ? `${detailInstruction}\n\n` : ""}Undesired content must be concise and limited to contradictions that directly protect the requested composition. Return JSON only.`;
+}
+
+export function parseManualPromptResult(text) {
+  const raw = String(text || "").trim();
+  if (!raw) throw new Error("AI 已响应，但没有返回可用文本。 ");
+
+  const unfenced = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const firstBrace = unfenced.indexOf("{");
+  const lastBrace = unfenced.lastIndexOf("}");
+  const candidates = [unfenced];
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(unfenced.slice(firstBrace, lastBrace + 1));
+  }
+
+  let parsed = null;
+  for (const candidate of candidates) {
+    try {
+      parsed = JSON.parse(candidate);
+      break;
+    } catch {}
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI 返回格式无效，请重试生成。 ");
+  }
+
+  const base = parsed.base_prompt ?? parsed.basePrompt;
+  const characters = parsed.character_prompts ?? parsed.characterPrompts;
+  if (!base || !Array.isArray(characters)) throw new Error("AI 返回内容不完整，请重试生成。 ");
+
+  let basePrompt = normalizePromptSection(base);
+  let characterPrompts = characters.map((item, index) => ({
+    name: String(item?.name || `Character ${index + 1}`).trim(),
+    position: String(item?.position || "AI's choice").trim(),
+    ...normalizePromptSection(item)
+  })).filter((item) => item.prompt);
+  const naturalLanguage = [basePrompt, ...characterPrompts]
+    .map((item) => item.naturalLanguage)
+    .filter(Boolean)
+    .join(" ");
+  basePrompt = removeTagOverlaps(basePrompt, naturalLanguage);
+  characterPrompts = characterPrompts.map((item) => ({
+    ...item,
+    ...removeTagOverlaps(item, naturalLanguage)
+  }));
+  const undesiredContent = normalizeGeneratedTags(
+    parsed.undesired_content ?? parsed.undesiredContent
+  );
+  if (!basePrompt.prompt) throw new Error("AI 返回内容不完整，请重试生成。 ");
+  return { basePrompt, characterPrompts, undesiredContent };
+}
+
+function normalizeGeneratedTags(value) {
+  const text = Array.isArray(value) ? value.join(", ") : String(value || "");
+  const seen = new Set();
+  return text
+    .replace(/^tags?(?:\s+prompt)?\s*[:：]\s*/i, "")
+    .split(/[,，\n]+/)
+    .map((tag) => tag.trim())
+    .filter((tag) => {
+      const key = tag.toLowerCase().replace(/\s+/g, " ");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(", ")
+    .replace(/[,，.\s]+$/, "");
+}
+
+function normalizePromptSection(value) {
+  const tags = normalizeGeneratedTags(value?.tags);
+  const naturalLanguage = String(value?.natural_language ?? value?.naturalLanguage ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return {
+    tags,
+    naturalLanguage,
+    prompt: [tags, naturalLanguage].filter(Boolean).join(tags && naturalLanguage ? ",\n" : "")
+  };
+}
+
+function removeTagOverlaps(section, naturalLanguage) {
+  const prose = normalizeConcept(naturalLanguage);
+  const tags = section.tags
+    .split(", ")
+    .filter((tag) => !prose.includes(` ${normalizeConcept(tag).trim()} `))
+    .join(", ");
+  return {
+    tags,
+    naturalLanguage: section.naturalLanguage,
+    prompt: [tags, section.naturalLanguage].filter(Boolean).join(tags && section.naturalLanguage ? ",\n" : "")
+  };
+}
+
+function normalizeConcept(value) {
+  return ` ${String(value || "").toLowerCase().replace(/[_-]+/g, " ").replace(/[^a-z0-9\s]+/g, " ").replace(/\s+/g, " ")} `;
+}
+
+export function formatManualPromptBundle({ basePrompt, characterPrompts, undesiredContent }) {
+  const sections = [`[BASE PROMPT]\n${basePrompt.prompt}`];
+  for (const [index, item] of characterPrompts.entries()) {
+    sections.push(`[CHARACTER ${index + 1}: ${item.name}]\nPosition: ${item.position}\n${item.prompt}`);
+  }
+  if (undesiredContent) sections.push(`[UNDESIRED CONTENT]\n${undesiredContent}`);
+  return sections.join("\n\n");
+}
+
 export function normalizeVisualPrompt(text) {
   let value = String(text || "").trim();
   if (!value) return "";
@@ -268,6 +472,75 @@ export function extractResponsesText(data) {
     }
   }
   return parts.join("\n").trim();
+}
+
+export async function readResponsesStream(response) {
+  const reader = response?.body?.getReader?.();
+  if (!reader) throw new Error("API 返回了流式响应，但浏览器无法读取响应流。 ");
+
+  const decoder = new TextDecoder();
+  const outputParts = [];
+  let completedText = "";
+  let buffer = "";
+
+  function consumeEvent(block) {
+    const payload = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!payload || payload === "[DONE]") return;
+
+    let event;
+    try {
+      event = JSON.parse(payload);
+    } catch {
+      return;
+    }
+
+    if (event?.type === "response.output_text.delta" && typeof event.delta === "string") {
+      outputParts.push(event.delta);
+    }
+    if (event?.type === "response.completed") {
+      completedText = extractResponsesText(event.response);
+    }
+    if (event?.type === "response.error" || event?.type === "response.failed") {
+      const message = event?.error?.message
+        || event?.response?.error?.message
+        || "AI API 流式响应失败。 ";
+      throw new Error(message);
+    }
+  }
+
+  function consumeBufferedEvents(flush = false) {
+    while (true) {
+      const separator = /\r?\n\r?\n/.exec(buffer);
+      if (!separator) break;
+      const block = buffer.slice(0, separator.index);
+      buffer = buffer.slice(separator.index + separator[0].length);
+      consumeEvent(block);
+    }
+    if (flush && buffer.trim()) {
+      consumeEvent(buffer);
+      buffer = "";
+    }
+  }
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      consumeBufferedEvents();
+    }
+    buffer += decoder.decode();
+    consumeBufferedEvents(true);
+  } finally {
+    reader.releaseLock();
+  }
+
+  return outputParts.join("").trim() || completedText.trim();
 }
 
 export function extractChatText(data) {

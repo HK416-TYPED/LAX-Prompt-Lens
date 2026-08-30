@@ -37,7 +37,7 @@
       </header>
 
       <section class="input-card" aria-labelledby="source-title">
-        <span class="module-code" aria-hidden="true">INPUT / URL</span>
+        <span id="input-module-code" class="module-code" aria-hidden="true">INPUT / URL</span>
         <div class="section-heading">
           <div>
             <span class="step">01</span>
@@ -46,16 +46,55 @@
           <button id="example-button" class="text-button" type="button">填入示例</button>
         </div>
 
-        <label class="url-field" for="post-url">
-          <span class="sr-only">Danbooru 帖子 URL</span>
-          <input
-            id="post-url"
-            type="url"
-            spellcheck="false"
-            autocomplete="off"
-            placeholder="https://shima.donmai.us/posts/11647422?..."
-          >
-        </label>
+        <div class="source-mode-switch" role="group" aria-label="输入模式">
+          <button type="button" data-source-mode="url" aria-pressed="true">Danbooru 帖子</button>
+          <button type="button" data-source-mode="manual" aria-pressed="false">手动文本</button>
+        </div>
+
+        <div id="url-input-panel" class="source-input-panel">
+          <label class="url-field" for="post-url">
+            <span class="sr-only">Danbooru 帖子 URL</span>
+            <input
+              id="post-url"
+              type="url"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="https://shima.donmai.us/posts/11647422?..."
+            >
+          </label>
+        </div>
+
+        <div id="manual-input-panel" class="source-input-panel is-hidden">
+          <label class="manual-field" for="manual-text">
+            <span class="sr-only">手动画面描述</span>
+            <textarea
+              id="manual-text"
+              maxlength="12000"
+              spellcheck="true"
+              placeholder="输入中文或英文画面构想；如只需复刻参考图可留空……"
+            ></textarea>
+            <span class="input-hint">支持中文或英文 · Ctrl / ⌘ + Enter 生成</span>
+          </label>
+          <div class="reference-picker">
+            <div class="reference-picker-heading">
+              <span>参考图（可选 · 最多 4 张）</span>
+              <button id="clear-manual-images" class="text-button is-hidden" type="button">清空</button>
+            </div>
+            <label id="manual-image-dropzone" class="reference-dropzone" for="manual-images">
+              <input id="manual-images" class="reference-file-input" type="file" accept="image/*" multiple>
+              <b>选择、拖入或粘贴参考图</b>
+              <small>无文字时复刻主参考；图文冲突时以文字为准</small>
+            </label>
+            <div id="manual-image-list" class="reference-image-list" aria-live="polite"></div>
+          </div>
+          <div class="manual-detail-mode" role="group" aria-label="提示词细节模式">
+            <span>细节模式</span>
+            <div class="detail-mode-switch">
+              <button type="button" data-manual-detail-mode="simple" aria-pressed="true">简</button>
+              <button type="button" data-manual-detail-mode="detailed" aria-pressed="false">繁</button>
+            </div>
+          </div>
+        </div>
 
         <div class="primary-actions">
           <button id="analyze-button" class="primary-button" type="button">
@@ -79,7 +118,7 @@
 
       <details class="settings-card">
         <summary>
-          <span><span class="step">02</span>视觉 API 设置</span>
+          <span><span class="step">02</span>AI API 设置</span>
           <span class="summary-note">Responses / Chat</span>
         </summary>
 
@@ -171,7 +210,7 @@
             <span>包含 meta tags</span>
           </label>
         </div>
-        <p class="privacy-note">点击“提取并分析”会把帖子主图与分析指令发送到你选择的视觉 API。API Key 仅发送到该服务；关闭“保存”后，刷新侧边栏即清除。</p>
+        <p class="privacy-note">帖子模式会发送主图与分析指令；手动模式会发送输入文本和所选参考图。API Key 仅发送到所选服务；关闭“保存”后，刷新侧边栏即清除。</p>
       </details>
 
       <section id="preview-card" class="preview-card is-hidden" aria-labelledby="preview-title">
@@ -197,30 +236,63 @@
           <button id="copy-all" class="text-button" type="button">复制全部</button>
         </div>
 
-        <article class="result-card">
-          <div class="result-card-header">
-            <div><span class="result-index">A</span><h3>Tags Prompt</h3></div>
-            <button class="copy-button" type="button" data-copy-target="tags-output">复制</button>
-          </div>
-          <textarea id="tags-output" readonly aria-label="Tags Prompt 输出"></textarea>
-        </article>
+        <div id="legacy-results">
+          <article class="result-card">
+            <div class="result-card-header">
+              <div><span class="result-index">A</span><h3>Tags Prompt</h3></div>
+              <button class="copy-button" type="button" data-copy-target="tags-output">复制</button>
+            </div>
+            <textarea id="tags-output" readonly aria-label="Tags Prompt 输出"></textarea>
+          </article>
 
-        <article class="result-card">
-          <div class="result-card-header">
-            <div><span class="result-index">B</span><h3>Visual NL Prompt</h3></div>
-            <button class="copy-button" type="button" data-copy-target="visual-output">复制</button>
-          </div>
-          <textarea id="visual-output" readonly aria-label="Visual NL Prompt 输出" placeholder="完成视觉分析后显示…"></textarea>
-        </article>
+          <article class="result-card">
+            <div class="result-card-header">
+              <div><span class="result-index">B</span><h3>Visual NL Prompt</h3></div>
+              <button class="copy-button" type="button" data-copy-target="visual-output">复制</button>
+            </div>
+            <textarea id="visual-output" readonly aria-label="Visual NL Prompt 输出" placeholder="完成视觉分析后显示…"></textarea>
+          </article>
 
-        <article class="result-card combined-card">
-          <div class="result-card-header">
-            <div><span class="result-index">A+B</span><h3>Combined Prompt</h3></div>
-            <button class="copy-button" type="button" data-copy-target="combined-output">复制</button>
-          </div>
-          <textarea id="combined-output" readonly aria-label="Combined Prompt 输出"></textarea>
-        </article>
+          <article class="result-card combined-card">
+            <div class="result-card-header">
+              <div><span class="result-index">A+B</span><h3>Combined Prompt</h3></div>
+              <button class="copy-button" type="button" data-copy-target="combined-output">复制</button>
+            </div>
+            <textarea id="combined-output" readonly aria-label="Combined Prompt 输出"></textarea>
+          </article>
+        </div>
+
+        <div id="manual-results" class="is-hidden">
+          <article class="result-card">
+            <div class="result-card-header">
+              <div><span class="result-index">BASE</span><h3>Base Prompt</h3></div>
+              <button class="copy-button" type="button" data-copy-target="base-output">复制</button>
+            </div>
+            <textarea id="base-output" readonly aria-label="Base Prompt 输出"></textarea>
+          </article>
+
+          <div id="character-results"></div>
+
+          <article class="result-card">
+            <div class="result-card-header">
+              <div><span class="result-index">UC</span><h3>Undesired Content</h3></div>
+              <button class="copy-button" type="button" data-copy-target="undesired-output">复制</button>
+            </div>
+            <textarea id="undesired-output" readonly aria-label="Undesired Content 输出"></textarea>
+          </article>
+        </div>
       </section>
+
+      <template id="character-result-template">
+        <article class="result-card character-result-card">
+          <div class="result-card-header">
+            <div><span class="result-index">CHAR</span><h3></h3></div>
+            <button class="copy-button" type="button">复制</button>
+          </div>
+          <p class="position-label"></p>
+          <textarea readonly aria-label="Character Prompt 输出"></textarea>
+        </article>
+      </template>
 
       <footer>
         <span><b>LAX</b> / LOCAL-FIRST CHROME EXTENSION</span>
