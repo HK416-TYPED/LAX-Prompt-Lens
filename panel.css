@@ -200,6 +200,13 @@ input::placeholder, textarea::placeholder { color: #485158; }
 .check-field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 9px; }
 .check-field input { width: 14px; height: 14px; accent-color: var(--accent); }
 .compact-check { align-self: end; height: 40px; }
+.paragraph-filter { margin: 0; padding: 12px; border: 1px solid var(--line); background: rgba(8,11,14,.76); }
+.paragraph-filter legend { padding: 0 7px; color: var(--accent); font: 750 9px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .06em; }
+.paragraph-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.paragraph-filter-grid label { display: flex; align-items: center; gap: 7px; min-height: 31px; padding: 5px 7px; border: 1px solid rgba(255,255,255,.07); color: var(--muted); background: rgba(255,255,255,.02); cursor: pointer; font-size: 9px; }
+.paragraph-filter-grid input { flex: 0 0 auto; width: 13px; height: 13px; accent-color: var(--accent); }
+.paragraph-filter-grid b { margin-right: 5px; color: var(--accent); font: 750 8px/1 "Cascadia Code", Consolas, monospace; }
+.paragraph-filter > p { margin: 8px 0 0; color: var(--dim); font-size: 8px; line-height: 1.45; }
 .privacy-note { margin: 0 0 16px; color: var(--dim); font-size: 9px; line-height: 1.55; }
 .endpoint-preview { display: block; margin-top: 7px; color: #8f9a9c; font: 650 8px/1.45 "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere; }
 

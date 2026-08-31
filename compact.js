@@ -1,46 +1,21 @@
 import {
   buildCombinedPrompt,
-  buildManualChatContent,
-  buildManualPromptInstruction,
-  buildPostApiUrls,
-  buildResponsesRequest,
-  buildTextResponsesRequest,
   buildTagPrompt,
-  buildVisionInstruction,
   chooseImageUrl,
-  extractChatText,
-  extractResponsesText,
   formatManualPromptBundle,
   isBuiltInApiEndpoint,
-  normalizeVisualPrompt,
-  parseManualPromptResult,
-  parsePostUrl,
-  readResponsesStream,
-  resolveApiEndpoint,
-  shouldUseResponsesStream
+  normalizeVisualParagraphKeys,
+  parsePostUrl
 } from "./core.js";
+import {
+  callManualPromptApi as requestManualPrompt,
+  callVisionApi as requestVisionPrompt,
+  resolveSettingsEndpoint
+} from "./api-client.js";
 import { fetchImageAsDataUrl, readReferenceImagesAsDataUrls } from "./image-utils.js";
+import { requestPost as requestDanbooruPost } from "./post-source.js";
 import { createReferenceImagePicker } from "./reference-picker.js";
-
-const DEFAULTS = {
-  providerPreset: "jarless",
-  apiMode: "responses",
-  endpoint: "https://jarlessapi.com",
-  model: "gpt-5.6-luna",
-  reasoningEffort: "xhigh",
-  disableStorage: true,
-  imageQuality: "large",
-  promptOrder: "tags-first",
-  includeMeta: false,
-  sourceMode: "url",
-  saveKey: false,
-  apiKey: ""
-};
-
-const SETTING_KEYS = [
-  "providerPreset", "apiMode", "endpoint", "model", "reasoningEffort",
-  "disableStorage", "imageQuality", "promptOrder", "includeMeta", "sourceMode", "saveKey", "apiKey"
-];
+import { loadSettings } from "./settings.js";
 
 const elements = {
   version: document.querySelector("#version"),
@@ -55,6 +30,8 @@ const elements = {
   manualImageDropzone: document.querySelector("#manual-image-dropzone"),
   manualImageList: document.querySelector("#manual-image-list"),
   clearManualImages: document.querySelector("#clear-manual-images"),
+  visualParagraphFilter: document.querySelector("#visual-paragraph-filter"),
+  visualParagraphInputs: [...document.querySelectorAll("[data-visual-paragraph]")],
   generateButton: document.querySelector("#generate-button"),
   copyButton: document.querySelector("#copy-button"),
   fullModeButton: document.querySelector("#full-mode-button"),
@@ -64,9 +41,11 @@ const elements = {
 };
 
 let combinedPrompt = "";
-let settings = { ...DEFAULTS };
+let settings = null;
 let manualDetailMode = "simple";
 let isBusy = false;
+let currentTagPrompt = "";
+let currentVisualPrompt = "";
 const referencePicker = createReferenceImagePicker({
   input: elements.manualImages,
   dropzone: elements.manualImageDropzone,
@@ -83,14 +62,13 @@ window.addEventListener("pagehide", () => referencePicker.destroy());
 async function initialize() {
   elements.version.textContent = `v${chrome.runtime.getManifest().version}`;
   const [saved, session] = await Promise.all([
-    chrome.storage.local.get(SETTING_KEYS),
+    loadSettings(),
     chrome.storage.session.get([
-      "apiKey", "sourcePostUrl", "sourceManualText", "compactLastUrl",
+      "sourcePostUrl", "sourceManualText", "compactLastUrl",
       "compactLastPrompt", "compactLastMeta", "manualDetailMode", "lastPromptResult"
     ])
   ]);
-  settings = { ...DEFAULTS, ...saved };
-  if (!settings.saveKey && session.apiKey) settings.apiKey = session.apiKey;
+  settings = saved;
 
   elements.postUrl.value = session.sourcePostUrl || session.compactLastUrl || "";
   elements.manualText.value = session.sourceManualText || "";
@@ -101,6 +79,7 @@ async function initialize() {
   }
   applySourceMode();
   applyManualDetailMode();
+  applyVisualParagraphSelection();
   restorePromptResult(session.lastPromptResult, session);
   if (!combinedPrompt && session.compactLastPrompt) {
     combinedPrompt = session.compactLastPrompt;
@@ -118,6 +97,9 @@ async function initialize() {
   }
   for (const button of elements.manualDetailButtons) {
     button.addEventListener("click", () => switchManualDetailMode(button.dataset.manualDetailMode));
+  }
+  for (const input of elements.visualParagraphInputs) {
+    input.addEventListener("change", handleVisualParagraphSelectionChange);
   }
   elements.postUrl.addEventListener("keydown", (event) => {
     if (event.key === "Enter") runPipeline();
@@ -152,6 +134,7 @@ function applySourceMode() {
   }
   elements.urlInputPanel.classList.toggle("is-hidden", manual);
   elements.manualInputPanel.classList.toggle("is-hidden", !manual);
+  elements.visualParagraphFilter.classList.toggle("is-hidden", manual);
   elements.inputLabel.textContent = manual ? "01 / TEXT + IMAGE" : "01 / POST URL";
   elements.generateButton.innerHTML = manual
     ? '<span aria-hidden="true">✦</span> 生成提示词'
@@ -210,7 +193,7 @@ async function runPipeline() {
     if (!apiKey) throw new Error("请先在完整版填写 API Key；可保存到本机或直接切换到小窗");
     if (!String(settings.model || "").trim()) throw new Error("完整版设置中缺少模型名称");
 
-    const endpoint = resolveApiEndpoint(settings.endpoint, settings.apiMode, settings.providerPreset);
+    const endpoint = resolveSettingsEndpoint(settings);
     await verifyEndpointPermission(endpoint);
 
     if (settings.sourceMode === "manual") {
@@ -221,7 +204,9 @@ async function runPipeline() {
     const parsed = parsePostUrl(elements.postUrl.value);
 
     setStatus("busy", `读取 Post #${parsed.id}…`);
-    const post = await requestPost(parsed.normalizedUrl);
+    const post = await requestDanbooruPost(parsed.normalizedUrl, {
+      onStatus: (message) => setStatus("busy", message)
+    });
     const tagPrompt = buildTagPrompt(post, { includeMeta: Boolean(settings.includeMeta) });
     if (!tagPrompt) throw new Error("帖子没有可用标签");
 
@@ -232,9 +217,16 @@ async function runPipeline() {
       endpoint,
       model: settings.model.trim()
     });
-    const visualPrompt = await callVisionApi({ endpoint, apiKey, imageDataUrl });
+    const visualPrompt = await requestVisionPrompt(settings, imageDataUrl);
 
-    combinedPrompt = buildCombinedPrompt(tagPrompt, visualPrompt, settings.promptOrder);
+    currentTagPrompt = tagPrompt;
+    currentVisualPrompt = visualPrompt;
+    combinedPrompt = buildCombinedPrompt(
+      tagPrompt,
+      visualPrompt,
+      settings.promptOrder,
+      settings.visualParagraphKeys
+    );
     const tagCount = tagPrompt.split(", ").length;
     const wordCount = visualPrompt.trim().split(/\s+/).filter(Boolean).length;
     const meta = `${tagCount} TAGS / ${wordCount} NL WORDS`;
@@ -273,13 +265,7 @@ async function runManualTextPipeline({ endpoint, apiKey }) {
     endpoint,
     model: settings.model.trim()
   });
-  const result = await callManualPromptApi({
-    endpoint,
-    apiKey,
-    userText,
-    imageDataUrls,
-    detailMode: manualDetailMode
-  });
+  const result = await requestManualPrompt(settings, userText, imageDataUrls, manualDetailMode);
   combinedPrompt = formatManualPromptBundle(result);
   const referenceMeta = referenceFiles.length ? ` / ${referenceFiles.length} REF` : "";
   const meta = `MANUAL${referenceMeta} / ${result.characterPrompts.length} CHARACTER REGIONS`;
@@ -301,7 +287,14 @@ function restorePromptResult(state, session) {
     combinedPrompt = formatManualPromptBundle(state.result);
     elements.resultMeta.textContent = `MANUAL / ${state.result.characterPrompts.length} CHARACTER REGIONS`;
   } else if (state?.mode === "url" && state.combinedPrompt) {
-    combinedPrompt = state.combinedPrompt;
+    currentTagPrompt = state.tagsPrompt || "";
+    currentVisualPrompt = state.visualPrompt || "";
+    combinedPrompt = buildCombinedPrompt(
+      currentTagPrompt,
+      currentVisualPrompt,
+      settings.promptOrder,
+      settings.visualParagraphKeys
+    );
     elements.resultMeta.textContent = session.compactLastMeta || "上一条结果已就绪";
   }
   if (!combinedPrompt) return;
@@ -310,58 +303,42 @@ function restorePromptResult(state, session) {
   setStatus("success", "已恢复上次生成结果");
 }
 
-async function requestPost(url) {
-  const failures = [];
-  for (const apiUrl of buildPostApiUrls(url)) {
-    try {
-      let response = await fetchDanbooruPost(apiUrl);
-      if ([502, 503, 504].includes(response.status)) {
-        await wait(700);
-        response = await fetchDanbooruPost(apiUrl);
-      }
-      if (!response.ok) {
-        failures.push(`${new URL(apiUrl).hostname}: HTTP ${response.status}`);
-        continue;
-      }
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) {
-        failures.push(`${new URL(apiUrl).hostname}: 非 JSON 响应`);
-        continue;
-      }
-      return normalizePost(await response.json());
-    } catch (error) {
-      failures.push(`${new URL(apiUrl).hostname}: ${cleanError(error)}`);
-    }
+function getSelectedVisualParagraphKeys() {
+  return elements.visualParagraphInputs
+    .filter((input) => input.checked)
+    .map((input) => input.dataset.visualParagraph);
+}
+
+function applyVisualParagraphSelection() {
+  const selected = new Set(normalizeVisualParagraphKeys(settings.visualParagraphKeys));
+  settings.visualParagraphKeys = [...selected];
+  for (const input of elements.visualParagraphInputs) {
+    input.checked = selected.has(input.dataset.visualParagraph);
   }
-  throw new Error(`无法读取帖子；请切换完整版查看诊断（${failures.join("；")}）`);
 }
 
-function normalizePost(post) {
-  return {
-    id: post.id,
-    rating: post.rating,
-    image_width: post.image_width,
-    image_height: post.image_height,
-    tag_string: post.tag_string || "",
-    tag_string_artist: post.tag_string_artist || "",
-    tag_string_copyright: post.tag_string_copyright || "",
-    tag_string_character: post.tag_string_character || "",
-    tag_string_general: post.tag_string_general || "",
-    tag_string_meta: post.tag_string_meta || "",
-    file_url: post.file_url || "",
-    large_file_url: post.large_file_url || "",
-    preview_file_url: post.preview_file_url || ""
-  };
-}
-
-function fetchDanbooruPost(apiUrl) {
-  return fetch(apiUrl, {
-    method: "GET",
-    credentials: "omit",
-    cache: "no-store",
-    referrerPolicy: "no-referrer",
-    headers: { Accept: "application/json" }
-  });
+async function handleVisualParagraphSelectionChange() {
+  settings.visualParagraphKeys = getSelectedVisualParagraphKeys();
+  if (currentTagPrompt || currentVisualPrompt) {
+    combinedPrompt = buildCombinedPrompt(
+      currentTagPrompt,
+      currentVisualPrompt,
+      settings.promptOrder,
+      settings.visualParagraphKeys
+    );
+    elements.copyButton.disabled = !combinedPrompt;
+    await chrome.storage.session.set({
+      compactLastPrompt: combinedPrompt,
+      lastPromptResult: {
+        mode: "url",
+        tagsPrompt: currentTagPrompt,
+        visualPrompt: currentVisualPrompt,
+        combinedPrompt,
+        preview: null
+      }
+    });
+  }
+  await chrome.storage.local.set({ visualParagraphKeys: settings.visualParagraphKeys });
 }
 
 async function verifyEndpointPermission(endpoint) {
@@ -370,102 +347,6 @@ async function verifyEndpointPermission(endpoint) {
   const originPattern = `${url.origin}/*`;
   const granted = await chrome.permissions.contains({ origins: [originPattern] });
   if (!granted) throw new Error("请先在完整版中授权这个自定义 API 地址");
-}
-
-async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {
-  const instruction = buildVisionInstruction();
-  const mode = settings.apiMode;
-  const body = mode === "responses"
-    ? buildResponsesRequest({
-        model: settings.model.trim(),
-        instruction,
-        imageDataUrl,
-        reasoningEffort: settings.reasoningEffort,
-        disableStorage: Boolean(settings.disableStorage)
-      })
-    : {
-        model: settings.model.trim(),
-        max_tokens: 1200,
-        messages: [
-          { role: "system", content: instruction },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Analyze this artwork and produce the requested final prompt." },
-              { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
-            ]
-          }
-        ]
-      };
-  const shouldStream = shouldUseResponsesStream(mode, body.model);
-  if (shouldStream) body.stream = true;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
-  const isEventStream = shouldStream && response.headers.get("content-type")?.includes("text/event-stream");
-  const data = isEventStream ? null : await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error?.message || data?.message || `视觉 API 请求失败（HTTP ${response.status}）`);
-  }
-
-  const rawText = isEventStream
-    ? await readResponsesStream(response)
-    : mode === "responses" ? extractResponsesText(data) : extractChatText(data);
-  const text = normalizeVisualPrompt(rawText);
-  if (!text) throw new Error("视觉 API 已响应，但没有返回可用文本");
-  return text;
-}
-
-async function callManualPromptApi({ endpoint, apiKey, userText, imageDataUrls, detailMode }) {
-  const instruction = buildManualPromptInstruction(detailMode);
-  const mode = settings.apiMode;
-  const body = mode === "responses"
-    ? buildTextResponsesRequest({
-        model: settings.model.trim(),
-        instruction,
-        userText,
-        imageDataUrls,
-        reasoningEffort: settings.reasoningEffort,
-        disableStorage: Boolean(settings.disableStorage)
-      })
-    : {
-        model: settings.model.trim(),
-        max_tokens: 1800,
-        messages: [
-          { role: "system", content: instruction },
-          { role: "user", content: buildManualChatContent({ userText, imageDataUrls }) }
-        ]
-      };
-  const shouldStream = shouldUseResponsesStream(mode, body.model);
-  if (shouldStream) body.stream = true;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
-  const isEventStream = shouldStream && response.headers.get("content-type")?.includes("text/event-stream");
-  const data = isEventStream ? null : await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const serverMessage = data?.error?.message || data?.message;
-    throw new Error(serverMessage
-      ? `${serverMessage}（HTTP ${response.status}）`
-      : `AI API 请求失败（HTTP ${response.status}）`);
-  }
-
-  const rawText = isEventStream
-    ? await readResponsesStream(response)
-    : mode === "responses" ? extractResponsesText(data) : extractChatText(data);
-  return parseManualPromptResult(rawText);
 }
 
 async function copyCombinedPrompt() {
@@ -482,6 +363,7 @@ function setBusy(busy) {
   elements.generateButton.disabled = busy;
   for (const button of elements.sourceModeButtons) button.disabled = busy;
   for (const button of elements.manualDetailButtons) button.disabled = busy;
+  for (const input of elements.visualParagraphInputs) input.disabled = busy;
   referencePicker.setDisabled(busy);
   elements.generateButton.innerHTML = busy
     ? '<span aria-hidden="true">◌</span> 正在生成…'

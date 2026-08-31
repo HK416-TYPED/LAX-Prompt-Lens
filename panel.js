@@ -1,62 +1,24 @@
 import {
   buildCombinedPrompt,
-  buildManualChatContent,
-  buildManualPromptInstruction,
-  buildPostApiUrls,
-  buildResponsesRequest,
-  buildTextResponsesRequest,
   buildTagPrompt,
-  buildVisionInstruction,
   chooseImageUrl,
-  extractChatText,
-  extractResponsesText,
   formatManualPromptBundle,
   isBuiltInApiEndpoint,
-  normalizeVisualPrompt,
-  parseManualPromptResult,
-  parsePostUrl,
-  readResponsesStream,
-  resolveApiEndpoint,
-  shouldUseResponsesStream
+  normalizeVisualParagraphKeys,
+  parsePostUrl
 } from "./core.js";
+import {
+  callManualPromptApi as requestManualPrompt,
+  callVisionApi as requestVisionPrompt,
+  resolveSettingsEndpoint
+} from "./api-client.js";
 import { fetchImageAsDataUrl, readReferenceImagesAsDataUrls } from "./image-utils.js";
+import { requestPost as requestDanbooruPost } from "./post-source.js";
 import { createReferenceImagePicker } from "./reference-picker.js";
+import { endpointOrigin, loadSettings, saveSettings, settingsForProvider } from "./settings.js";
 
 const EXAMPLE_URL = "https://shima.donmai.us/posts/11647422?q=girls_frontline_2%3A_exilium";
 const EXAMPLE_MANUAL_TEXT = "银发少女独自站在雨夜的霓虹街道，黑色长风衣被风掀起，手持透明雨伞。低机位中近景，冷蓝环境光与暖粉色招牌形成对比，湿润路面映出破碎倒影，日系动画电影质感。";
-const DEFAULT_ENDPOINTS = {
-  responses: "https://api.openai.com/v1/responses",
-  chat: "https://api.openai.com/v1/chat/completions"
-};
-const PROVIDER_PRESETS = {
-  jarless: {
-    apiMode: "responses",
-    endpoint: "https://jarlessapi.com",
-    model: "gpt-5.6-luna",
-    reasoningEffort: "xhigh",
-    disableStorage: true
-  },
-  openai: {
-    apiMode: "responses",
-    endpoint: "https://api.openai.com/v1/responses",
-    model: "gpt-5.6-luna",
-    reasoningEffort: "xhigh",
-    disableStorage: true
-  },
-  xai: {
-    apiMode: "responses",
-    endpoint: "https://api.x.ai",
-    model: "grok-4.6",
-    reasoningEffort: "high",
-    disableStorage: true
-  }
-};
-const SETTING_KEYS = [
-  "providerPreset", "apiMode", "endpoint", "model", "reasoningEffort",
-  "disableStorage", "outputLanguage", "imageQuality", "promptOrder",
-  "includeMeta", "saveKey", "apiKey", "sourceMode"
-];
-
 const elements = {
   versionBadge: document.querySelector("#version-badge"),
   footerVersion: document.querySelector("#footer-version"),
@@ -96,6 +58,7 @@ const elements = {
   imageQuality: document.querySelector("#image-quality"),
   promptOrder: document.querySelector("#prompt-order"),
   includeMeta: document.querySelector("#include-meta"),
+  visualParagraphInputs: [...document.querySelectorAll("[data-visual-paragraph]")],
   previewCard: document.querySelector("#preview-card"),
   previewImage: document.querySelector("#preview-image"),
   postMeta: document.querySelector("#post-meta"),
@@ -112,7 +75,7 @@ const elements = {
   copyAll: document.querySelector("#copy-all")
 };
 
-let lastDefaultEndpoint = DEFAULT_ENDPOINTS.responses;
+let activeKeyOrigin = "";
 let diagnosticRun = null;
 let sourceMode = "url";
 let manualDetailMode = "simple";
@@ -141,31 +104,17 @@ function showVersion() {
 
 async function restoreSettings() {
   const [saved, session] = await Promise.all([
-    chrome.storage.local.get(SETTING_KEYS),
+    loadSettings(),
     chrome.storage.session.get(["sourcePostUrl", "sourceManualText", "manualDetailMode", "lastPromptResult"])
   ]);
-  const legacyCustomEndpoint = saved.endpoint && !Object.values(DEFAULT_ENDPOINTS).includes(saved.endpoint);
-  const providerPreset = saved.providerPreset || (legacyCustomEndpoint ? "custom" : "jarless");
-  const preset = PROVIDER_PRESETS[providerPreset] || PROVIDER_PRESETS.jarless;
-  elements.providerPreset.value = providerPreset;
-  elements.apiMode.value = saved.apiMode || preset.apiMode;
-  elements.endpoint.value = saved.endpoint || preset.endpoint;
-  elements.model.value = saved.model || preset.model;
-  elements.reasoningEffort.value = saved.reasoningEffort || preset.reasoningEffort;
-  elements.disableStorage.checked = saved.disableStorage ?? preset.disableStorage;
-  elements.outputLanguage.value = "en";
-  elements.imageQuality.value = saved.imageQuality || "large";
-  elements.promptOrder.value = saved.promptOrder || "tags-first";
-  elements.includeMeta.checked = Boolean(saved.includeMeta);
-  elements.saveKey.checked = Boolean(saved.saveKey);
-  elements.apiKey.value = saved.saveKey ? (saved.apiKey || "") : "";
+  applySettingsToElements(saved);
   elements.postUrl.value = session.sourcePostUrl || "";
   elements.manualText.value = session.sourceManualText || "";
   manualDetailMode = session.manualDetailMode === "detailed" ? "detailed" : "simple";
   sourceMode = saved.sourceMode === "manual" ? "manual" : "url";
+  activeKeyOrigin = endpointOrigin(saved.endpoint);
   applySourceMode(sourceMode);
   applyManualDetailMode();
-  lastDefaultEndpoint = DEFAULT_ENDPOINTS[elements.apiMode.value];
   updateEndpointPreview();
   restoreLastResult(session.lastPromptResult);
 }
@@ -208,22 +157,26 @@ function bindEvents() {
   elements.manualText.addEventListener("change", persistSourceInputs);
 
   elements.providerPreset.addEventListener("change", () => {
-    applyProviderPreset(elements.providerPreset.value);
+    const next = settingsForProvider(readSettingsFromElements(), elements.providerPreset.value);
+    applySettingsToElements(next);
+    activeKeyOrigin = endpointOrigin(next.endpoint);
     updateEndpointPreview();
     persistSettings();
   });
 
   elements.apiMode.addEventListener("change", () => {
-    const current = elements.endpoint.value.trim();
-    if (!current || Object.values(DEFAULT_ENDPOINTS).includes(current) || current === lastDefaultEndpoint) {
-      elements.endpoint.value = DEFAULT_ENDPOINTS[elements.apiMode.value];
-    }
-    lastDefaultEndpoint = DEFAULT_ENDPOINTS[elements.apiMode.value];
+    elements.providerPreset.value = "custom";
     updateEndpointPreview();
     persistSettings();
   });
 
   elements.endpoint.addEventListener("input", updateEndpointPreview);
+  elements.endpoint.addEventListener("change", () => {
+    const nextOrigin = endpointOrigin(elements.endpoint.value);
+    if (activeKeyOrigin && nextOrigin !== activeKeyOrigin) elements.apiKey.value = "";
+    activeKeyOrigin = nextOrigin;
+    persistSettings();
+  });
 
   elements.toggleKey.addEventListener("click", () => {
     const showing = elements.apiKey.type === "text";
@@ -237,6 +190,9 @@ function bindEvents() {
     elements.outputLanguage, elements.imageQuality, elements.promptOrder, elements.includeMeta
   ]) {
     input.addEventListener("change", persistSettings);
+  }
+  for (const input of elements.visualParagraphInputs) {
+    input.addEventListener("change", handleVisualParagraphSelectionChange);
   }
 
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
@@ -252,9 +208,7 @@ function bindEvents() {
 }
 
 async function switchToCompactMode() {
-  const apiKey = elements.apiKey.value.trim();
   await Promise.all([persistSettings(), persistSourceInputs()]);
-  if (apiKey) await chrome.storage.session.set({ apiKey });
 
   const response = await chrome.runtime.sendMessage({ type: "set-ui-mode", mode: "compact" });
   if (!response?.ok) {
@@ -280,24 +234,9 @@ async function switchToCompactMode() {
 }
 
 async function persistSettings() {
-  const settings = {
-    providerPreset: elements.providerPreset.value,
-    apiMode: elements.apiMode.value,
-    endpoint: elements.endpoint.value.trim(),
-    model: elements.model.value.trim(),
-    reasoningEffort: elements.reasoningEffort.value,
-    disableStorage: elements.disableStorage.checked,
-    outputLanguage: elements.outputLanguage.value,
-    imageQuality: elements.imageQuality.value,
-    promptOrder: elements.promptOrder.value,
-    includeMeta: elements.includeMeta.checked,
-    saveKey: elements.saveKey.checked,
-    sourceMode
-  };
-
-  if (elements.saveKey.checked) settings.apiKey = elements.apiKey.value.trim();
-  await chrome.storage.local.set(settings);
-  if (!elements.saveKey.checked) await chrome.storage.local.remove("apiKey");
+  const settings = readSettingsFromElements();
+  await saveSettings(settings);
+  activeKeyOrigin = endpointOrigin(settings.endpoint);
 }
 
 async function persistSourceInputs() {
@@ -351,35 +290,61 @@ function applySourceMode(mode) {
   setStatus("idle", manual ? "等待输入画面描述或添加参考图" : "等待输入链接");
 }
 
-function applyProviderPreset(provider) {
-  const preset = PROVIDER_PRESETS[provider];
-  if (!preset) return;
-  elements.apiMode.value = preset.apiMode;
-  elements.endpoint.value = preset.endpoint;
-  elements.model.value = preset.model;
-  elements.reasoningEffort.value = preset.reasoningEffort;
-  elements.disableStorage.checked = preset.disableStorage;
-  lastDefaultEndpoint = DEFAULT_ENDPOINTS[preset.apiMode];
-}
-
 function updateEndpointPreview() {
   const providerNames = {
     openai: "OpenAI",
     xai: "xAI Grok",
     jarless: "JarlessAPI",
+    gemini: "Google Gemini",
+    glm: "智谱 GLM",
+    kimi: "Kimi / Moonshot",
     custom: "自定义服务"
   };
   try {
-    const endpoint = resolveApiEndpoint(
-      elements.endpoint.value,
-      elements.apiMode.value,
-      elements.providerPreset.value
-    );
+    const endpoint = resolveSettingsEndpoint(readSettingsFromElements());
     const provider = providerNames[elements.providerPreset.value] || "自定义服务";
     elements.resolvedEndpoint.textContent = `实际请求：${provider} · ${endpoint}`;
   } catch {
     elements.resolvedEndpoint.textContent = "实际请求：接口地址或协议模式不匹配";
   }
+}
+
+function readSettingsFromElements() {
+  return {
+    providerPreset: elements.providerPreset.value,
+    apiMode: elements.apiMode.value,
+    endpoint: elements.endpoint.value.trim(),
+    model: elements.model.value.trim(),
+    reasoningEffort: elements.reasoningEffort.value,
+    disableStorage: elements.disableStorage.checked,
+    apiKey: elements.apiKey.value.trim(),
+    saveKey: elements.saveKey.checked,
+    outputLanguage: "en",
+    imageQuality: elements.imageQuality.value,
+    promptOrder: elements.promptOrder.value,
+    visualParagraphKeys: getSelectedVisualParagraphKeys(),
+    includeMeta: elements.includeMeta.checked,
+    sourceMode
+  };
+}
+
+function applySettingsToElements(settings) {
+  elements.providerPreset.value = settings.providerPreset;
+  elements.apiMode.value = settings.apiMode;
+  elements.endpoint.value = settings.endpoint;
+  elements.model.value = settings.model;
+  elements.reasoningEffort.value = settings.reasoningEffort;
+  elements.disableStorage.checked = Boolean(settings.disableStorage);
+  elements.apiKey.value = settings.apiKey || "";
+  elements.saveKey.checked = Boolean(settings.saveKey);
+  elements.outputLanguage.value = "en";
+  elements.imageQuality.value = settings.imageQuality || "large";
+  elements.promptOrder.value = settings.promptOrder || "tags-first";
+  const selectedParagraphs = new Set(normalizeVisualParagraphKeys(settings.visualParagraphKeys));
+  for (const input of elements.visualParagraphInputs) {
+    input.checked = selectedParagraphs.has(input.dataset.visualParagraph);
+  }
+  elements.includeMeta.checked = Boolean(settings.includeMeta);
 }
 
 async function runPipeline({ tagsOnly }) {
@@ -415,18 +380,18 @@ async function runPipeline({ tagsOnly }) {
     }
 
     const parsed = parsePostUrl(elements.postUrl.value);
+    const settings = readSettingsFromElements();
     let endpoint = "";
     if (!tagsOnly) {
-      endpoint = resolveApiEndpoint(
-        elements.endpoint.value,
-        elements.apiMode.value,
-        elements.providerPreset.value
-      );
+      endpoint = resolveSettingsEndpoint(settings);
       await ensureEndpointPermission(endpoint);
     }
 
     setStatus("busy", `正在读取帖子 #${parsed.id} 的标签…`);
-    const post = await requestPost(parsed.normalizedUrl);
+    const post = await requestDanbooruPost(parsed.normalizedUrl, {
+      onStatus: (message) => setStatus("busy", message),
+      onDiagnostic: recordDiagnostic
+    });
     const tagPrompt = buildTagPrompt(post, { includeMeta: elements.includeMeta.checked });
     if (!tagPrompt) throw new Error("帖子没有可用标签。 ");
 
@@ -453,13 +418,14 @@ async function runPipeline({ tagsOnly }) {
       endpoint,
       model: elements.model.value.trim()
     });
-    const visualPrompt = await callVisionApi({ endpoint, apiKey, imageDataUrl });
+    const visualPrompt = await requestVisionPrompt(settings, imageDataUrl, recordDiagnostic);
 
     elements.visualOutput.value = visualPrompt;
     elements.combinedOutput.value = buildCombinedPrompt(
       tagPrompt,
       visualPrompt,
-      elements.promptOrder.value
+      elements.promptOrder.value,
+      getSelectedVisualParagraphKeys()
     );
     autoSizeOutputs();
     setStatus("success", "三种 Prompt 已全部生成");
@@ -482,11 +448,8 @@ async function runManualTextPipeline() {
   if (!apiKey) throw new Error("手动文本生成需要 API Key，请先在设置中填写。 ");
   if (!elements.model.value.trim()) throw new Error("请填写模型名称。 ");
 
-  const endpoint = resolveApiEndpoint(
-    elements.endpoint.value,
-    elements.apiMode.value,
-    elements.providerPreset.value
-  );
+  const settings = readSettingsFromElements();
+  const endpoint = resolveSettingsEndpoint(settings);
   await ensureEndpointPermission(endpoint);
   setStatus("busy", referenceFiles.length ? "正在读取参考图并生成专业提示词…" : "正在将画面描述重构为专业提示词…");
   recordDiagnostic("manual-input-ready", {
@@ -500,13 +463,7 @@ async function runManualTextPipeline() {
     endpoint,
     model: elements.model.value.trim()
   });
-  const result = await callManualPromptApi({
-    endpoint,
-    apiKey,
-    userText,
-    imageDataUrls,
-    detailMode: manualDetailMode
-  });
+  const result = await requestManualPrompt(settings, userText, imageDataUrls, manualDetailMode, recordDiagnostic);
   renderManualResult(result);
   await Promise.all([
     persistSettings(),
@@ -524,165 +481,6 @@ async function ensureEndpointPermission(endpoint) {
   if (hasPermission) return;
   const granted = await chrome.permissions.request({ origins: [originPattern] });
   if (!granted) throw new Error("未授予自定义 API 地址的访问权限。 ");
-}
-
-async function requestPost(url) {
-  const parsed = parsePostUrl(url);
-  const apiUrls = buildPostApiUrls(url);
-  const failures = [];
-  let post = null;
-
-  for (const apiUrl of apiUrls) {
-    recordDiagnostic("direct-fetch-start", { apiUrl });
-    setStatus("busy", `正在通过 ${new URL(apiUrl).hostname} 读取帖子 #${parsed.id}…`);
-    try {
-      let response = await fetchDanbooruPost(apiUrl);
-      recordDiagnostic("direct-fetch-response", {
-        apiUrl,
-        status: response.status,
-        contentType: response.headers.get("content-type") || ""
-      });
-      if ([502, 503, 504].includes(response.status)) {
-        await wait(700);
-        response = await fetchDanbooruPost(apiUrl);
-        recordDiagnostic("direct-fetch-retry-response", { apiUrl, status: response.status });
-      }
-
-      if (response.ok) {
-        const contentType = response.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          failures.push(`${new URL(apiUrl).hostname}: 返回的不是 JSON`);
-          continue;
-        }
-        post = await response.json();
-        break;
-      }
-
-      if (response.status === 404) failures.push(`${new URL(apiUrl).hostname}: HTTP 404`);
-      else if (response.status === 429) failures.push(`${new URL(apiUrl).hostname}: HTTP 429`);
-      else failures.push(`${new URL(apiUrl).hostname}: HTTP ${response.status}`);
-    } catch (error) {
-      recordDiagnostic("direct-fetch-error", {
-        apiUrl,
-        name: error?.name,
-        message: cleanError(error),
-        stack: error?.stack
-      });
-      failures.push(`${new URL(apiUrl).hostname}: ${cleanError(error)}`);
-    }
-  }
-
-  if (!post) {
-    setStatus("busy", `直接读取失败，正在通过临时同源页面读取帖子 #${parsed.id}…`);
-    try {
-      post = await fetchPostThroughTemporaryTab(parsed.normalizedUrl, parsed.id);
-    } catch (error) {
-      recordDiagnostic("temporary-tab-error", {
-        name: error?.name,
-        message: cleanError(error),
-        stack: error?.stack
-      });
-      failures.push(`临时同源页面: ${cleanError(error)}`);
-    }
-  }
-
-  if (!post) {
-    throw new Error(`无法读取 Danbooru 帖子：${failures.join("；")}`);
-  }
-
-  return {
-    id: post.id,
-    rating: post.rating,
-    image_width: post.image_width,
-    image_height: post.image_height,
-    tag_string: post.tag_string || "",
-    tag_string_artist: post.tag_string_artist || "",
-    tag_string_copyright: post.tag_string_copyright || "",
-    tag_string_character: post.tag_string_character || "",
-    tag_string_general: post.tag_string_general || "",
-    tag_string_meta: post.tag_string_meta || "",
-    file_url: post.file_url || "",
-    large_file_url: post.large_file_url || "",
-    preview_file_url: post.preview_file_url || ""
-  };
-}
-
-async function fetchPostThroughTemporaryTab(postUrl, postId) {
-  recordDiagnostic("temporary-tab-create", { postUrl, postId });
-  const tab = await chrome.tabs.create({ url: postUrl, active: false });
-  if (!tab?.id) throw new Error("Chrome 未返回临时标签页 ID。 ");
-
-  try {
-    await waitForTabLoad(tab.id, 25000);
-    recordDiagnostic("temporary-tab-loaded", { tabId: tab.id });
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      world: "MAIN",
-      func: async (id) => {
-        try {
-          const response = await fetch(`/posts/${id}.json`, {
-            method: "GET",
-            credentials: "same-origin",
-            cache: "no-store",
-            headers: { Accept: "application/json" }
-          });
-          if (!response.ok) return { ok: false, status: response.status, error: `HTTP ${response.status}` };
-          const contentType = response.headers.get("content-type") || "";
-          if (!contentType.includes("application/json")) {
-            return { ok: false, status: response.status, error: `Unexpected content-type: ${contentType}` };
-          }
-          return { ok: true, status: response.status, post: await response.json() };
-        } catch (error) {
-          return { ok: false, status: 0, error: `${error?.name || "Error"}: ${error?.message || String(error)}` };
-        }
-      },
-      args: [postId]
-    });
-    const result = results?.[0]?.result;
-    recordDiagnostic("temporary-tab-result", result || { error: "No script result" });
-    if (!result?.ok || !result.post) throw new Error(result?.error || "临时页面没有返回帖子 JSON。 ");
-    return result.post;
-  } finally {
-    await chrome.tabs.remove(tab.id).catch((error) => {
-      recordDiagnostic("temporary-tab-close-error", { message: cleanError(error) });
-    });
-  }
-}
-
-function waitForTabLoad(tabId, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      if (error) reject(error);
-      else resolve();
-    };
-    const listener = (updatedTabId, changeInfo) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") finish();
-    };
-    const timer = setTimeout(() => finish(new Error(`临时页面加载超过 ${Math.round(timeoutMs / 1000)} 秒。`)), timeoutMs);
-    chrome.tabs.onUpdated.addListener(listener);
-    chrome.tabs.get(tabId).then((tab) => {
-      if (tab.status === "complete") finish();
-    }).catch(finish);
-  });
-}
-
-function fetchDanbooruPost(apiUrl) {
-  return fetch(apiUrl, {
-    method: "GET",
-    credentials: "omit",
-    cache: "no-store",
-    referrerPolicy: "no-referrer",
-    headers: { Accept: "application/json" }
-  });
-}
-
-function wait(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function renderPreview(post) {
@@ -746,7 +544,7 @@ function restoreLastResult(state) {
   } else if (state.mode === "url" && state.combinedPrompt) {
     elements.tagsOutput.value = state.tagsPrompt || "";
     elements.visualOutput.value = state.visualPrompt || "";
-    elements.combinedOutput.value = state.combinedPrompt;
+    refreshCombinedPrompt();
     showLegacyResults();
     elements.results.classList.remove("is-hidden");
     if (state.preview?.src) {
@@ -761,170 +559,26 @@ function restoreLastResult(state) {
   setStatus("success", "已恢复上次生成结果");
 }
 
-async function callVisionApi({ endpoint, apiKey, imageDataUrl }) {
-  const instruction = buildVisionInstruction();
-  const mode = elements.apiMode.value;
-  const body = mode === "responses"
-    ? buildResponsesRequest({
-        model: elements.model.value.trim(),
-        instruction,
-        imageDataUrl,
-        reasoningEffort: elements.reasoningEffort.value,
-        disableStorage: elements.disableStorage.checked
-      })
-    : {
-        model: elements.model.value.trim(),
-        max_tokens: 1200,
-        messages: [
-          { role: "system", content: instruction },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Analyze this artwork and produce the requested final prompt." },
-              { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
-            ]
-          }
-        ]
-      };
-  const shouldStream = shouldUseResponsesStream(mode, body.model);
-  if (shouldStream) body.stream = true;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
-  const isEventStream = shouldStream && response.headers.get("content-type")?.includes("text/event-stream");
-  const data = isEventStream ? null : await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = data?.error?.message || data?.message || `视觉 API 请求失败（HTTP ${response.status}）。`;
-    throw new Error(message);
-  }
-
-  const rawText = isEventStream
-    ? await readResponsesStream(response)
-    : mode === "responses" ? extractResponsesText(data) : extractChatText(data);
-  const text = normalizeVisualPrompt(rawText);
-  if (!text) throw new Error("视觉 API 已响应，但没有返回可用文本。 ");
-  return text;
+function getSelectedVisualParagraphKeys() {
+  return elements.visualParagraphInputs
+    .filter((input) => input.checked)
+    .map((input) => input.dataset.visualParagraph);
 }
 
-async function callManualPromptApi({ endpoint, apiKey, userText, imageDataUrls, detailMode }) {
-  const instruction = buildManualPromptInstruction(detailMode);
-  const mode = elements.apiMode.value;
-  const body = mode === "responses"
-    ? buildTextResponsesRequest({
-        model: elements.model.value.trim(),
-        instruction,
-        userText,
-        imageDataUrls,
-        reasoningEffort: elements.reasoningEffort.value,
-        disableStorage: elements.disableStorage.checked
-      })
-    : {
-        model: elements.model.value.trim(),
-        max_tokens: 1800,
-        messages: [
-          { role: "system", content: instruction },
-          { role: "user", content: buildManualChatContent({ userText, imageDataUrls }) }
-        ]
-      };
-  const shouldStream = shouldUseResponsesStream(mode, body.model);
-  if (shouldStream) body.stream = true;
+function refreshCombinedPrompt() {
+  elements.combinedOutput.value = buildCombinedPrompt(
+    elements.tagsOutput.value,
+    elements.visualOutput.value,
+    elements.promptOrder.value,
+    getSelectedVisualParagraphKeys()
+  );
+  autoSizeOutputs();
+}
 
-  const requestBody = JSON.stringify(body);
-  const requestStartedAt = performance.now();
-  recordDiagnostic("api-request", {
-    endpoint: sanitizeEndpointForDiagnostics(endpoint),
-    mode,
-    model: body.model,
-    bodyBytes: new TextEncoder().encode(requestBody).byteLength,
-    imageCount: imageDataUrls.length,
-    stream: shouldStream
-  });
-
-  let response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: requestBody
-    });
-  } catch (error) {
-    recordDiagnostic("api-network-error", {
-      durationMs: Math.round(performance.now() - requestStartedAt),
-      name: error?.name,
-      message: cleanError(error)
-    });
-    throw error;
-  }
-
-  const requestId = response.headers.get("x-request-id")
-    || response.headers.get("request-id")
-    || response.headers.get("cf-ray")
-    || undefined;
-  const isEventStream = shouldStream
-    && response.ok
-    && response.headers.get("content-type")?.includes("text/event-stream");
-  if (isEventStream) {
-    recordDiagnostic("api-response", {
-      status: response.status,
-      statusText: response.statusText,
-      ok: true,
-      durationMs: Math.round(performance.now() - requestStartedAt),
-      requestId,
-      stream: true
-    });
-    try {
-      const rawText = await readResponsesStream(response);
-      recordDiagnostic("api-stream-complete", {
-        durationMs: Math.round(performance.now() - requestStartedAt),
-        outputCharacters: rawText.length
-      });
-      return parseManualPromptResult(rawText);
-    } catch (error) {
-      recordDiagnostic("api-stream-error", {
-        durationMs: Math.round(performance.now() - requestStartedAt),
-        message: cleanError(error)
-      });
-      throw error;
-    }
-  }
-
-  const responseText = await response.text();
-  let data = {};
-  try {
-    data = responseText ? JSON.parse(responseText) : {};
-  } catch {
-    // Keep non-JSON gateway errors available as a short diagnostic message.
-  }
-  const serverMessage = data?.error?.message || data?.message || (!response.ok ? responseText.trim() : "");
-  recordDiagnostic("api-response", {
-    status: response.status,
-    statusText: response.statusText,
-    ok: response.ok,
-    durationMs: Math.round(performance.now() - requestStartedAt),
-    requestId,
-    errorType: data?.error?.type,
-    errorCode: data?.error?.code,
-    serverMessage: !response.ok ? truncateDiagnosticText(serverMessage) : undefined,
-    stream: false
-  });
-  if (!response.ok) {
-    const statusLabel = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
-    throw new Error(serverMessage
-      ? `${truncateDiagnosticText(serverMessage)}（${statusLabel}）`
-      : `AI API 请求失败（${statusLabel}）。`);
-  }
-
-  const rawText = mode === "responses" ? extractResponsesText(data) : extractChatText(data);
-  return parseManualPromptResult(rawText);
+async function handleVisualParagraphSelectionChange() {
+  refreshCombinedPrompt();
+  await persistSettings();
+  if (elements.visualOutput.value.trim()) await saveLegacyResult();
 }
 
 function setBusy(busy) {

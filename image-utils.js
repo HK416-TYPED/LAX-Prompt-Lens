@@ -1,8 +1,9 @@
 import { isXaiVisionTarget } from "./core.js";
 
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_CONVERSION_PIXELS = 24_000_000;
 const XAI_IMAGE_TYPES = new Set(["image/jpeg", "image/png"]);
+const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 export const MAX_REFERENCE_IMAGES = 4;
 
 export function isXaiCompatibleImageType(mimeType) {
@@ -18,7 +19,8 @@ export async function fetchImageAsDataUrl(primaryUrl, fallbackUrl, { endpoint = 
   for (const url of candidates) {
     try {
       const blob = await downloadImage(url);
-      if (!requireXaiFormat || isXaiCompatibleImageType(blob.type)) {
+      const requireGeminiFormat = isGeminiEndpoint(endpoint) && blob.type === "image/gif";
+      if ((!requireXaiFormat || isXaiCompatibleImageType(blob.type)) && !requireGeminiFormat) {
         return blobToDataUrl(blob);
       }
       convertibleBlob ||= blob;
@@ -34,8 +36,11 @@ export async function fetchImageAsDataUrl(primaryUrl, fallbackUrl, { endpoint = 
 export function validateReferenceImageFiles(files) {
   const images = Array.from(files || []);
   if (images.length > MAX_REFERENCE_IMAGES) throw new Error(`参考图最多上传 ${MAX_REFERENCE_IMAGES} 张。`);
-  if (images.some((file) => !String(file?.type || "").startsWith("image/"))) {
-    throw new Error("请选择有效的图片文件。 ");
+  if (images.some((file) => !SUPPORTED_IMAGE_TYPES.has(String(file?.type || "").toLowerCase()))) {
+    throw new Error("仅支持 JPEG、PNG、WebP 或 GIF 图片。 ");
+  }
+  if (images.some((file) => !Number.isFinite(file?.size) || file.size <= 0)) {
+    throw new Error("参考图为空或无法读取。 ");
   }
   if (images.some((file) => file.size > MAX_IMAGE_BYTES)) {
     throw new Error("单张参考图不能超过 20 MB。 ");
@@ -49,19 +54,45 @@ export function validateReferenceImageFiles(files) {
 export async function readReferenceImagesAsDataUrls(files, { endpoint = "", model = "" } = {}) {
   const images = validateReferenceImageFiles(files);
   const requireXaiFormat = isXaiVisionTarget(endpoint, model);
-  return Promise.all(images.map((file) =>
-    requireXaiFormat && !isXaiCompatibleImageType(file.type)
+  await Promise.all(images.map(validateImageSignature));
+  return Promise.all(images.map((file) => {
+    const requireGeminiFormat = isGeminiEndpoint(endpoint) && file.type === "image/gif";
+    return (requireXaiFormat && !isXaiCompatibleImageType(file.type)) || requireGeminiFormat
       ? convertToJpegDataUrl(file, "参考图")
-      : blobToDataUrl(file)
-  ));
+      : blobToDataUrl(file);
+  }));
 }
 
 async function downloadImage(url) {
-  const response = await fetch(url, { credentials: "omit" });
+  const response = await fetch(url, {
+    credentials: "omit",
+    redirect: "error",
+    referrerPolicy: "no-referrer",
+    signal: AbortSignal.timeout(30000)
+  });
   if (!response.ok) throw new Error(`主图下载失败（HTTP ${response.status}）。`);
   const blob = await response.blob();
-  if (!blob.type.startsWith("image/")) throw new Error("主图不是视觉模型支持的静态图像。 ");
+  if (!SUPPORTED_IMAGE_TYPES.has(blob.type.toLowerCase())) throw new Error("主图不是支持的 JPEG、PNG、WebP 或 GIF。 ");
+  if (!blob.size) throw new Error("主图为空。 ");
   if (blob.size > MAX_IMAGE_BYTES) throw new Error("主图超过 20 MB，请改用 Sample 图像质量。 ");
+  await validateImageSignature(blob);
+  return blob;
+}
+
+export async function validateImageSignature(blob) {
+  const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const ascii = String.fromCharCode(...bytes);
+  const type = String(blob.type || "").toLowerCase();
+  const valid = type === "image/jpeg"
+    ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    : type === "image/png"
+      ? bytes[0] === 0x89 && ascii.slice(1, 4) === "PNG"
+      : type === "image/webp"
+        ? ascii.slice(0, 4) === "RIFF" && ascii.slice(8, 12) === "WEBP"
+        : type === "image/gif"
+          ? ascii.startsWith("GIF87a") || ascii.startsWith("GIF89a")
+          : false;
+  if (!valid) throw new Error("图片内容与声明格式不一致，已拒绝读取。 ");
   return blob;
 }
 
@@ -86,9 +117,17 @@ async function convertToJpegDataUrl(blob, label = "主图") {
     }
     return blobToDataUrl(converted);
   } catch (error) {
-    throw new Error(`Grok 仅支持 JPEG/PNG，${label}自动转换失败：${error?.message || String(error)}`);
+    throw new Error(`${label}自动转换为 JPEG 失败：${error?.message || String(error)}`);
   } finally {
     bitmap?.close?.();
+  }
+}
+
+function isGeminiEndpoint(endpoint) {
+  try {
+    return new URL(endpoint).origin === "https://generativelanguage.googleapis.com";
+  } catch {
+    return false;
   }
 }
 

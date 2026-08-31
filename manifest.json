@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
   "short_name": "__MSG_extensionShortName__",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "minimum_chrome_version": "114",
@@ -17,7 +17,11 @@
     "https://cdn.donmai.us/*",
     "https://api.openai.com/*",
     "https://api.x.ai/*",
-    "https://jarlessapi.com/*"
+    "https://jarlessapi.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://open.bigmodel.cn/*",
+    "https://api.moonshot.cn/*",
+    "https://api.moonshot.ai/*"
   ],
   "optional_host_permissions": [
     "https://*/*",

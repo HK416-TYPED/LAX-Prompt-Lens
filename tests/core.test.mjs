@@ -19,13 +19,29 @@ import {
   isXaiEndpoint,
   isXaiVisionTarget,
   normalizeVisualPrompt,
+  normalizeVisualParagraphKeys,
   parseManualPromptResult,
   parsePostUrl,
   readResponsesStream,
   resolveApiEndpoint,
+  selectVisualPromptParagraphs,
+  splitVisualPromptParagraphs,
   shouldUseResponsesStream
 } from "../core.js";
-import { isXaiCompatibleImageType, validateReferenceImageFiles } from "../image-utils.js";
+import {
+  MAX_IMAGE_BYTES,
+  isXaiCompatibleImageType,
+  validateImageSignature,
+  validateReferenceImageFiles
+} from "../image-utils.js";
+import {
+  PROVIDER_PRESETS,
+  buildProviderRequest,
+  extractGeminiText,
+  performProviderRequest,
+  resolveSettingsEndpoint
+} from "../api-client.js";
+import { restoreKey, settingsForProvider } from "../settings.js";
 
 const examplePost = {
   tag_string_artist: "scotch_quazar",
@@ -89,6 +105,40 @@ test("optionally includes meta tags", () => {
 test("combines prompts in either order", () => {
   assert.equal(buildCombinedPrompt("tag one, tag two", "A cinematic frame."), "tag one, tag two,\n\nA cinematic frame.");
   assert.equal(buildCombinedPrompt("tag one", "A frame.", "visual-first"), "A frame.\n\ntag one");
+});
+
+test("splits the returned visual prompt into the four selectable paragraph categories", () => {
+  const visual = [
+    "An experimental Japanese illustration of a pale-haired figure.",
+    "The composition uses a low camera and converging diagonals.",
+    "Purple vapor separates the figure from a tiled industrial background.",
+    "Angular linework, oxidized teal color, and cyan light create an editorial finish."
+  ].join("\n\n");
+  const paragraphs = splitVisualPromptParagraphs(visual);
+  assert.deepEqual(
+    paragraphs.map(({ code, label }) => [code, label]),
+    [
+      ["P1", "主体与视觉身份"],
+      ["P2", "构图、镜头与空间层次"],
+      ["P3", "环境、背景与氛围"],
+      ["P4", "绘制、色彩、光照与艺术气质"]
+    ]
+  );
+  assert.equal(paragraphs[2].text, "Purple vapor separates the figure from a tiled industrial background.");
+  assert.equal(
+    selectVisualPromptParagraphs(visual, ["subject", "rendering"]),
+    `${paragraphs[0].text}\n\n${paragraphs[3].text}`
+  );
+});
+
+test("A+B includes only the checked visual paragraphs", () => {
+  const visual = "An illustrated subject.\n\nA low-angle composition.\n\nA sparse environment.\n\nPainterly rendering and cold light.";
+  assert.equal(
+    buildCombinedPrompt("tag one, tag two", visual, "tags-first", ["composition", "environment"]),
+    "tag one, tag two,\n\nA low-angle composition.\n\nA sparse environment."
+  );
+  assert.deepEqual(normalizeVisualParagraphKeys(["rendering", "unknown", "rendering"]), ["rendering"]);
+  assert.equal(buildCombinedPrompt("tag one", visual, "tags-first", []), "tag one");
 });
 
 test("chooses sample by default and original when requested", () => {
@@ -232,8 +282,95 @@ test("validates local reference image limits", () => {
   const image = (name, size = 1024) => ({ name, size, type: "image/png", lastModified: 1 });
   assert.equal(validateReferenceImageFiles([image("one.png")]).length, 1);
   assert.throws(() => validateReferenceImageFiles(Array.from({ length: 5 }, (_, index) => image(`${index}.png`))), /最多上传 4 张/);
-  assert.throws(() => validateReferenceImageFiles([{ name: "notes.txt", size: 10, type: "text/plain" }]), /有效的图片/);
+  assert.throws(() => validateReferenceImageFiles([{ name: "notes.txt", size: 10, type: "text/plain" }]), /仅支持/);
   assert.throws(() => validateReferenceImageFiles([image("large.png", 21 * 1024 * 1024)]), /单张参考图/);
+  assert.throws(() => validateReferenceImageFiles([image("empty.png", 0)]), /为空/);
+  assert.throws(() => validateReferenceImageFiles([{ ...image("vector.svg"), type: "image/svg+xml" }]), /仅支持/);
+});
+
+test("validates image signatures instead of trusting MIME labels", async () => {
+  const png = new Blob([Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])], { type: "image/png" });
+  const spoofed = new Blob(["<html>not an image</html>"], { type: "image/png" });
+  assert.equal(await validateImageSignature(png), png);
+  await assert.rejects(validateImageSignature(spoofed), /声明格式不一致/);
+  assert.equal(MAX_IMAGE_BYTES, 20 * 1024 * 1024);
+});
+
+test("resolves Gemini, GLM and Kimi provider endpoints", () => {
+  assert.equal(
+    resolveSettingsEndpoint(PROVIDER_PRESETS.gemini),
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  );
+  assert.equal(
+    resolveSettingsEndpoint(PROVIDER_PRESETS.glm),
+    "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+  );
+  assert.equal(
+    resolveSettingsEndpoint(PROVIDER_PRESETS.kimi),
+    "https://api.moonshot.cn/v1/chat/completions"
+  );
+  assert.throws(() => resolveApiEndpoint("https://api.example.com?key=secret"), /查询参数/);
+});
+
+test("builds native Gemini and OpenAI-compatible multimodal requests", () => {
+  const image = "data:image/png;base64,YWJj";
+  const gemini = buildProviderRequest(
+    { ...PROVIDER_PRESETS.gemini, providerPreset: "gemini", apiKey: "gem-key" },
+    { instruction: "Return JSON", userText: "雨夜", imageDataUrls: [image], manual: true }
+  );
+  assert.equal(gemini.headers["x-goog-api-key"], "gem-key");
+  assert.equal(gemini.headers.Authorization, undefined);
+  assert.deepEqual(gemini.body.contents[0].parts.at(-1).inlineData, { mimeType: "image/png", data: "YWJj" });
+  assert.equal(extractGeminiText({ candidates: [{ content: { parts: [{ text: "thought", thought: true }, { text: "final" }] } }] }), "final");
+
+  for (const providerPreset of ["glm", "kimi"]) {
+    const request = buildProviderRequest(
+      { ...PROVIDER_PRESETS[providerPreset], providerPreset, apiKey: "secret" },
+      { instruction: "Return JSON", userText: "雨夜", imageDataUrls: [image], manual: true }
+    );
+    assert.equal(request.headers.Authorization, "Bearer secret");
+    assert.deepEqual(request.body.thinking, { type: "disabled" });
+    assert.equal(request.body.messages[1].content.at(-1).type, "image_url");
+  }
+});
+
+test("shared API transport omits credentials, rejects redirects and reports truncation", async () => {
+  const settings = { ...PROVIDER_PRESETS.kimi, providerPreset: "kimi", apiKey: "secret" };
+  const request = buildProviderRequest(settings, {
+    instruction: "Return JSON",
+    userText: "雨夜",
+    imageDataUrls: [],
+    manual: true
+  });
+  const text = await performProviderRequest(settings, request, () => {}, async (url, init) => {
+    assert.equal(url, "https://api.moonshot.cn/v1/chat/completions");
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
+    assert.ok(init.signal instanceof AbortSignal);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  });
+  assert.equal(text, "ok");
+
+  await assert.rejects(
+    performProviderRequest(settings, request, () => {}, async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: "partial" }, finish_reason: "length" }] }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )),
+    /输出被截断/
+  );
+});
+
+test("scopes API keys to endpoint origins and clears them across providers", () => {
+  const saved = { endpoint: "https://api.one.example/v1", apiKey: "one", saveKey: true };
+  assert.equal(restoreKey(saved, {}, "https://api.one.example/custom"), "one");
+  assert.equal(restoreKey(saved, {}, "https://api.two.example/v1"), "");
+  assert.equal(restoreKey({}, { apiKey: "session", keyOrigin: "https://api.two.example" }, "https://api.two.example/v1"), "session");
+  const switched = settingsForProvider({ ...PROVIDER_PRESETS.jarless, apiKey: "jarless-key" }, "gemini");
+  assert.equal(switched.apiKey, "");
+  assert.equal(switched.providerPreset, "gemini");
 });
 
 test("uses the LAX art-direction instruction with an English 300-550 word target", () => {

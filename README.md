@@ -47,9 +47,10 @@ It also provides a **Manual text** mode. Enter an image concept in Chinese or En
 - **Professional visual language** — prioritizes the face, silhouette, composition, depth, rendering method, color hierarchy, and lighting logic instead of listing every visible object.
 - **Descriptive output** — normalizes accidental imperative openings such as `Create ...` into a coherent `A ...` / `An ...` image prompt.
 - **Two interface modes** — a full Chrome Side Panel and a compact toolbar popup.
-- **Manual text generation** — produces NovelAI V5 base and character prompts with cross-field semantic deduplication.
-- **Provider flexibility** — supports the official OpenAI Responses API, the official xAI Grok Responses API, a JarlessAPI Responses preset, and an optional compatible custom endpoint.
-- **Local-first key handling** — the API key is session-only by default and is saved locally only when the user explicitly enables it.
+- **Selective A+B composition** — keeps the full Visual NL Prompt intact while allowing any of its four returned paragraphs to be included or excluded from the Combined Prompt.
+- **Manual text generation** — produces NovelAI V5 base and positioned character prompts with deterministic duplicate cleanup.
+- **Provider flexibility** — supports OpenAI Responses, xAI Grok Responses, JarlessAPI, native Google Gemini, Zhipu GLM, Kimi/Moonshot, and compatible custom endpoints.
+- **Origin-scoped key handling** — the API key is session-only by default, is never reused across provider origins, and is saved locally only when explicitly enabled.
 - **Stateless requests** — Responses requests use `store: false`.
 
 ### Install from source
@@ -73,7 +74,9 @@ For manual generation, switch the input selector to **Manual text**, choose **Si
 
 ### Compact mode
 
-Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps the URL/manual-text selector, generate action, result-copy button, and a link back to the full panel. Current inputs and generated results are restored when switching modes or reopening the panel during the same browser session.
+Use **Compact mode** from the full panel to switch the toolbar action into a small popup. It keeps the URL/manual-text selector, generate action, result-copy button, and a link back to the full panel. Text inputs and generated results are restored during the same browser session. Local file selections stay only in the page where they were chosen and must be selected again after switching interfaces.
+
+The abandoned arbitrary-source A–D reverse-analysis prototype is not part of v0.8. Local files remain available only as optional references for Manual text generation; Pinterest/ArtStation ingestion, OCR sections, keyword boxes, and A–D output are intentionally excluded.
 
 ### API support and current default
 
@@ -82,7 +85,10 @@ Supported providers are presented in this order:
 1. **Official OpenAI Responses API**
 2. **Official xAI Grok Responses API** — `grok-4.6` with image understanding
 3. **JarlessAPI Responses** — the currently shipped default preset
-4. **Compatible custom endpoints**
+4. **Google Gemini native `generateContent` API**
+5. **Zhipu GLM Chat Completions API**
+6. **Kimi / Moonshot Chat Completions API**
+7. **Compatible custom endpoints**
 
 The extension currently opens with the following JarlessAPI preset:
 
@@ -113,7 +119,10 @@ Underscores become spaces, and parentheses are escaped as `\(` and `\)`. Meta ta
 - The selected post image and analysis instruction are sent to the API endpoint configured by the user.
 - In Manual text mode, the entered concept and selected local reference images are sent to the configured API endpoint.
 - API keys are sent only to that configured endpoint.
+- Switching to an endpoint on another origin clears the active key instead of reusing it.
 - Keys are not persisted unless **Save key locally** is enabled.
+- API and image requests use finite timeouts and reject redirects that could cross an origin boundary.
+- Local reference files are limited to JPEG, PNG, WebP, or GIF; MIME declarations and file signatures are both checked.
 - The extension does not vote, favorite, edit, or upload Danbooru content.
 - Signing keys, packaged CRX files, environment files, and local credentials are excluded from version control.
 
@@ -125,7 +134,7 @@ No third-party npm package is required for the test suite.
 node --test
 ```
 
-Current test coverage includes URL parsing, API fallbacks, category ordering, tag formatting, endpoint resolution, Responses payload construction, prompt policy, and output normalization.
+Current test coverage includes URL parsing, API fallbacks, category ordering, tag formatting, provider endpoint and payload construction, key-origin isolation, image signature validation, request transport safety, prompt policy, and output normalization.
 
 ### Known limitations
 
@@ -136,7 +145,7 @@ Current test coverage includes URL parsing, API fallbacks, category ordering, ta
 
 ### Disclaimer
 
-LAX Prompt Lens is an independent tool and is not affiliated with Danbooru, OpenAI, xAI, or JarlessAPI. Respect source-site terms, artist rights, and the policies of your selected model provider.
+LAX Prompt Lens is an independent tool and is not affiliated with Danbooru or any supported model provider. Respect source-site terms, artist rights, and the policies of your selected provider.
 
 ---
 
@@ -175,9 +184,10 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 - **专业画面分析**：优先关注面部、轮廓、构图、空间、绘制技法、色彩层级和光照逻辑，不机械枚举全部物体。
 - **描述式输出**：自动把模型偶发返回的 `Create ...` 命令式开头整理为连贯的 `A ...` / `An ...` 图像提示词。
 - **两种界面模式**：提供完整 Chrome 侧边栏和紧凑工具栏小窗。
-- **手动文本生成**：生成 NovelAI V5 主提示词与角色分区，并执行跨字段语义去重。
-- **多服务支持**：支持 OpenAI 官方 Responses API、xAI Grok 官方 Responses API、JarlessAPI Responses 预设，并可选兼容自定义接口。
-- **本地优先的 Key 管理**：API Key 默认只在当前会话使用；仅在使用者主动勾选后保存到本机。
+- **A+B 段落筛选**：完整保留 Visual NL Prompt，并可按主体、构图、环境、绘制色光四类勾选要拼入 Combined Prompt 的段落。
+- **手动文本生成**：生成 NovelAI V5 主提示词与定位角色分区，并执行确定性的重复清理。
+- **多服务支持**：支持 OpenAI Responses、xAI Grok Responses、JarlessAPI、Google Gemini 原生接口、智谱 GLM、Kimi/Moonshot 及兼容自定义接口。
+- **按域隔离的 Key 管理**：API Key 默认只在当前会话使用，不会跨服务域名复用；仅在使用者主动勾选后保存到本机。
 - **无状态请求**：Responses 请求设置 `store: false`。
 
 ### 从源码安装
@@ -201,7 +211,9 @@ LAX Prompt Lens 是一款本地运行的 Chrome Manifest V3 参考图分析扩�
 
 ### 小窗模式
 
-在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗保留帖子 URL/手动文本切换、生成按钮、结果复制按钮和返回完整版入口；同一浏览器会话中切换模式或重新打开侧边栏会恢复输入与生成结果。
+在完整版顶部点击**小窗模式**，工具栏按钮会切换为紧凑弹窗。小窗保留帖子 URL/手动文本切换、生成按钮、结果复制按钮和返回完整版入口；同一浏览器会话中会恢复文字输入与生成结果。本地文件选择只存在于选择它的页面，切换界面后需要重新选择。
+
+此前试验性的“任意来源 A–D 参考图逆向分析”不属于 v0.8。Pinterest/ArtStation 读取、OCR 分段、关键词加框和 A–D 输出均明确移除；本地图像仅作为手动文本创作模式的可选参考。
 
 ### API 支持与当前默认预设
 
@@ -210,7 +222,10 @@ README 按以下顺序介绍支持的服务：
 1. **OpenAI 官方 Responses API**
 2. **xAI Grok 官方 Responses API**：支持 `grok-4.6` 图像理解
 3. **JarlessAPI Responses**：当前随扩展提供的默认预设
-4. **兼容的自定义接口**
+4. **Google Gemini 原生 `generateContent` API**
+5. **智谱 GLM Chat Completions API**
+6. **Kimi / Moonshot Chat Completions API**
+7. **兼容的自定义接口**
 
 扩展当前默认打开以下 JarlessAPI 预设：
 
@@ -241,7 +256,10 @@ artist → copyright → character → general
 - 帖子图片与分析指令会发送到使用者配置的 API Endpoint。
 - 手动文本模式会把输入的画面构想和所选本地参考图发送到使用者配置的 API Endpoint。
 - API Key 只会发送到该 Endpoint。
+- 切换到不同来源域名的 Endpoint 时会清空当前 Key，不会跨服务复用。
 - 除非主动开启**在本机保存 Key**，否则 Key 不会持久化。
+- API 与图片请求均有明确超时，并拒绝可能跨域的重定向。
+- 本地参考图仅支持 JPEG、PNG、WebP 或 GIF，同时校验 MIME 声明与文件签名。
 - 扩展不会修改、收藏、评分或上传 Danbooru 内容。
 - 签名私钥、CRX、环境配置与本地凭据均已从版本控制中排除。
 
@@ -253,7 +271,7 @@ artist → copyright → character → general
 node --test
 ```
 
-当前测试覆盖 URL 解析、API 回退、分类顺序、标签格式、Endpoint 解析、Responses 请求体、提示词约束与输出规范化。
+当前测试覆盖 URL 解析、API 回退、分类顺序、标签格式、多 Provider Endpoint 与请求体、Key 域隔离、图片签名校验、请求传输安全、提示词约束与输出规范化。
 
 ### 已知限制
 
@@ -264,4 +282,4 @@ node --test
 
 ### 声明
 
-LAX Prompt Lens 是独立工具，与 Danbooru、OpenAI、xAI 或 JarlessAPI 均无隶属或合作关系。请遵守来源网站条款、创作者权益及所选模型服务商的政策。
+LAX Prompt Lens 是独立工具，与 Danbooru 或任何受支持模型服务商均无隶属或合作关系。请遵守来源网站条款、创作者权益及所选服务商的政策。

@@ -5,10 +5,23 @@ const CATEGORY_FIELDS = [
   "tag_string_character",
   "tag_string_general"
 ];
+export const VISUAL_PARAGRAPH_OPTIONS = Object.freeze([
+  { key: "subject", code: "P1", label: "主体与视觉身份" },
+  { key: "composition", code: "P2", label: "构图、镜头与空间层次" },
+  { key: "environment", code: "P3", label: "环境、背景与氛围" },
+  { key: "rendering", code: "P4", label: "绘制、色彩、光照与艺术气质" }
+]);
+export const DEFAULT_VISUAL_PARAGRAPH_KEYS = Object.freeze(
+  VISUAL_PARAGRAPH_OPTIONS.map(({ key }) => key)
+);
 const BUILT_IN_API_ORIGINS = new Set([
   "https://api.openai.com",
   "https://api.x.ai",
-  "https://jarlessapi.com"
+  "https://jarlessapi.com",
+  "https://generativelanguage.googleapis.com",
+  "https://open.bigmodel.cn",
+  "https://api.moonshot.cn",
+  "https://api.moonshot.ai"
 ]);
 
 export function parsePostUrl(rawValue) {
@@ -76,9 +89,47 @@ export function buildTagPrompt(post, { includeMeta = false } = {}) {
     .join(", ");
 }
 
-export function buildCombinedPrompt(tagPrompt, visualPrompt, order = "tags-first") {
+export function normalizeVisualParagraphKeys(value) {
+  if (!Array.isArray(value)) return [...DEFAULT_VISUAL_PARAGRAPH_KEYS];
+  const allowed = new Set(DEFAULT_VISUAL_PARAGRAPH_KEYS);
+  return [...new Set(value.filter((key) => allowed.has(key)))];
+}
+
+export function splitVisualPromptParagraphs(visualPrompt) {
+  const value = normalizeVisualPrompt(visualPrompt)
+    .replace(/&#x20;|&nbsp;/gi, " ")
+    .trim();
+  if (!value) {
+    return VISUAL_PARAGRAPH_OPTIONS.map((option) => ({ ...option, text: "" }));
+  }
+
+  const rawParagraphs = value
+    .split(/\r?\n\s*\r?\n+/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const paragraphs = rawParagraphs.length > VISUAL_PARAGRAPH_OPTIONS.length
+    ? [...rawParagraphs.slice(0, 3), rawParagraphs.slice(3).join(" ")]
+    : rawParagraphs;
+
+  return VISUAL_PARAGRAPH_OPTIONS.map((option, index) => ({
+    ...option,
+    text: paragraphs[index] || ""
+  }));
+}
+
+export function selectVisualPromptParagraphs(visualPrompt, selectedKeys) {
+  const selected = new Set(normalizeVisualParagraphKeys(selectedKeys));
+  return splitVisualPromptParagraphs(visualPrompt)
+    .filter(({ key, text }) => selected.has(key) && text)
+    .map(({ text }) => text)
+    .join("\n\n");
+}
+
+export function buildCombinedPrompt(tagPrompt, visualPrompt, order = "tags-first", selectedParagraphKeys = null) {
   const tags = String(tagPrompt || "").trim().replace(/[,.\s]+$/, "");
-  const visual = String(visualPrompt || "").trim();
+  const visual = selectedParagraphKeys === null
+    ? String(visualPrompt || "").trim()
+    : selectVisualPromptParagraphs(visualPrompt, selectedParagraphKeys);
   if (!tags) return visual;
   if (!visual) return tags;
   return order === "visual-first" ? `${visual}\n\n${tags}` : `${tags},\n\n${visual}`;
@@ -120,7 +171,7 @@ export function isXaiVisionTarget(rawValue, model = "") {
   return isXaiEndpoint(rawValue) || isGrokModel(model);
 }
 
-export function resolveApiEndpoint(rawValue, mode = "responses", provider = "custom") {
+export function resolveApiEndpoint(rawValue, mode = "responses", provider = "custom", model = "") {
   let url;
   try {
     url = new URL(String(rawValue || "").trim());
@@ -133,6 +184,17 @@ export function resolveApiEndpoint(rawValue, mode = "responses", provider = "cus
   }
   if (url.protocol === "http:" && !["localhost", "127.0.0.1"].includes(url.hostname)) {
     throw new Error("远程视觉 API 必须使用 HTTPS。 ");
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error("视觉 API 地址不能包含凭据、查询参数或片段。 ");
+  }
+
+  if (mode === "gemini" || provider === "gemini") {
+    if (url.protocol !== "https:") throw new Error("Gemini API 必须使用 HTTPS。 ");
+    const modelName = String(model || "").trim();
+    if (!/^[a-zA-Z0-9._-]+$/.test(modelName)) throw new Error("Gemini 模型名称无效。 ");
+    url.pathname = `/v1beta/models/${modelName}:generateContent`;
+    return url.href;
   }
 
   const cleanPath = url.pathname.replace(/\/+$/, "") || "/";

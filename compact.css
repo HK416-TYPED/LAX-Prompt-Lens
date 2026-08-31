@@ -65,6 +65,12 @@ textarea { min-height: 92px; padding-top: 9px; padding-bottom: 9px; resize: vert
 .reference-image-actions button:hover { border-color: var(--accent); color: var(--accent); }
 .reference-image-actions button:disabled { cursor: wait; opacity: .45; }
 .manual-detail-mode { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; color: var(--muted); font-size: 8px; font-weight: 750; }
+.paragraph-filter { margin: 9px 0; padding: 8px; border: 1px solid var(--line); background: #080b0e; }
+.paragraph-filter legend { padding: 0 5px; color: var(--accent); font: 700 8px/1 "Cascadia Code", Consolas, monospace; letter-spacing: .06em; }
+.paragraph-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.paragraph-filter-grid label { display: flex; align-items: center; gap: 5px; min-height: 25px; padding: 3px 5px; border: 1px solid rgba(255,255,255,.07); color: var(--muted); cursor: pointer; font-size: 8px; }
+.paragraph-filter-grid input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
+.paragraph-filter-grid b { margin-right: 3px; color: var(--accent); font-size: 7px; }
 .detail-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line); background: #080b0e; }
 .detail-mode-switch button { min-width: 34px; height: 22px; border: 1px solid transparent; color: var(--muted); background: transparent; cursor: pointer; font-size: 9px; font-weight: 750; }
 .detail-mode-switch button[aria-pressed="true"] { border-color: rgba(223,255,0,.4); color: var(--accent); background: rgba(223,255,0,.07); }

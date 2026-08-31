@@ -129,6 +129,9 @@
               <option value="openai">OpenAI 官方</option>
               <option value="xai">xAI Grok 官方</option>
               <option value="jarless">JarlessAPI（默认）</option>
+              <option value="gemini">Google Gemini 官方</option>
+              <option value="glm">智谱 GLM 官方</option>
+              <option value="kimi">Kimi / Moonshot 官方</option>
               <option value="custom">自定义兼容服务</option>
             </select>
           </label>
@@ -138,6 +141,7 @@
             <select id="api-mode">
               <option value="responses">Responses API（兼容协议）</option>
               <option value="chat">Chat Completions（兼容协议）</option>
+              <option value="gemini">Gemini generateContent（原生）</option>
             </select>
           </label>
 
@@ -179,7 +183,7 @@
 
           <label class="check-field compact-check">
             <input id="disable-storage" type="checkbox" checked>
-            <span>禁用响应存储</span>
+            <span>禁用 Responses 响应存储</span>
           </label>
 
           <label class="field">
@@ -252,6 +256,17 @@
             </div>
             <textarea id="visual-output" readonly aria-label="Visual NL Prompt 输出" placeholder="完成视觉分析后显示…"></textarea>
           </article>
+
+          <fieldset class="paragraph-filter">
+            <legend>合并到 A+B 的 NL 段落</legend>
+            <div class="paragraph-filter-grid">
+              <label><input type="checkbox" data-visual-paragraph="subject" checked><span><b>P1</b>主体与视觉身份</span></label>
+              <label><input type="checkbox" data-visual-paragraph="composition" checked><span><b>P2</b>构图、镜头与空间层次</span></label>
+              <label><input type="checkbox" data-visual-paragraph="environment" checked><span><b>P3</b>环境、背景与氛围</span></label>
+              <label><input type="checkbox" data-visual-paragraph="rendering" checked><span><b>P4</b>绘制、色彩、光照与艺术气质</span></label>
+            </div>
+            <p>只影响 A+B；上方 B 始终保留模型返回的完整四段文本。</p>
+          </fieldset>
 
           <article class="result-card combined-card">
             <div class="result-card-header">
